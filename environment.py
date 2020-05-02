@@ -339,25 +339,26 @@ class Environment:
 
 
     def observe(self):
-        obs = np.zeros((self.num_agents, 4+config.history_steps, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.float32)
+        obs = np.zeros((self.num_agents, 3, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.float32)
+        pos = np.zeros((self.num_agents, 4), dtype=np.float32)
+        agent_map = np.zeros(self.map_size, dtype=np.float32)
+        agent_map[self.agents_pos[:,0],self.agents_pos[:,1]] = 1
+        goal_map = np.zeros(self.map_size, dtype=np.float32)
+        goal_map[self.goals_pos[:,0],self.goals_pos[:,1]] = 1
+
         for i in range(self.num_agents):
-            obs[i,0][tuple(self.agents_pos[i])] = 1
+            x, y = self.agents_pos[i][0], self.agents_pos[i][1]
+            pos[i][0:2] = self.agents_pos[i]
+            pos[i][2:4] = self.goals_pos[i]
 
-            obs[i,1][tuple(self.goals_pos[i])] = 1
+            obs[i,0,:,:] = agent_map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
 
-            # trajectory of other agents
-            other_agents = [id for id in range(self.num_agents) if id != i]
-            for step in range(config.history_steps):
-                for id in other_agents:
-                    obs[i,1+config.history_steps-step][tuple(self.history[max(self.steps-step, 0)][id])] = 1
+            obs[i,1,:,:] = goal_map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
 
-            # goal's positions of other agents
-            for id in other_agents:
-                obs[i,2+config.history_steps][tuple(self.goals_pos[id])] = 1
+            obs[i,2,:,:] = self.map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
 
-            obs[i,3+config.history_steps,:,:] = np.copy(self.map==0)
 
-        return obs
+        return pos, obs
 
     
     def render(self):
