@@ -200,18 +200,9 @@ class Environment:
         assert len(actions) == self.num_agents, 'actions number' + str(actions)
         # assert all([action_idx<config.action_space and action_idx>=0 for action_idx in actions]), 'action index out of range'
 
-
-        if np.array_equal(self.agents_pos[0], self.goals_pos[0]) and actions[0] != 0:
-            print(self.map)
-            print(self.steps)
-            print(self.agents_pos)
-            print(self.goals_pos)
-            print(actions)
-            raise RuntimeError('action != zero')
-
         check_id = [i for i in range(self.num_agents)]
 
-        rewards = np.empty(self.num_agents, dtype=np.float32)
+        rewards = []
 
         # remove no movement agent id
         for agent_id in check_id.copy():
@@ -221,12 +212,12 @@ class Environment:
                 check_id.remove(agent_id)
 
                 if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]):
-                    rewards[agent_id] = config.stay_on_goal_reward
+                    rewards.append(config.stay_on_goal_reward)
                 else:
-                    rewards[agent_id] = config.stay_off_goal_reward
+                    rewards.append(config.stay_off_goal_reward)
             else:
                 # move
-                rewards[agent_id] = config.move_reward
+                rewards.append(config.move_reward)
 
 
         next_pos = np.copy(self.agents_pos)
@@ -320,16 +311,16 @@ class Environment:
         self.steps += 1
 
         # check done
-        done = [False for i in range(self.num_agents)]
-        for i in range(self.num_agents):
-            if np.array_equal(self.agents_pos[i], self.goals_pos[i]):
-                done[i] = True
-                if actions[i] != 0:
-                    rewards[i] = config.finish_reward
+        if np.array_equal(self.agents_pos, self.goals_pos):
+            done = True
+            rewards = [config.finish_reward for _ in range(self.num_agents)]
+        else:
+            done = False
 
         info = {'step': self.steps-1}
 
         if np.unique(self.agents_pos, axis=0).shape[0] < self.num_agents:
+            # no overlapping agents
             print(self.steps)
             print(self.map)
             print(self.agents_pos)
