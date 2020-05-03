@@ -335,27 +335,28 @@ class Environment:
             print(self.agents_pos)
             print(self.history[-1])
             raise RuntimeError('unique')
+
         return self.observe(), rewards, done, info
 
 
     def observe(self):
-        obs = np.zeros((self.num_agents, 3, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.float32)
+        obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.float32)
         pos = np.zeros((self.num_agents, 4), dtype=np.float32)
+
         agent_map = np.zeros(self.map_size, dtype=np.float32)
-        agent_map[self.agents_pos[:,0],self.agents_pos[:,1]] = 1
-        goal_map = np.zeros(self.map_size, dtype=np.float32)
-        goal_map[self.goals_pos[:,0],self.goals_pos[:,1]] = 1
+        agent_map[self.agents_pos[:,0], self.agents_pos[:,1]] = 1
+
+        # goal_map = np.zeros(self.map_size, dtype=np.float32)
+        # goal_map[self.goals_pos[:,0], self.goals_pos[:,1]] = 1
 
         for i in range(self.num_agents):
-            x, y = self.agents_pos[i][0], self.agents_pos[i][1]
+            x, y = self.agents_pos[i]
             pos[i][0:2] = self.agents_pos[i]
             pos[i][2:4] = self.goals_pos[i]
 
-            obs[i,0,:,:] = agent_map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
+            obs[i,0,:,:] = self.map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]==0
 
-            obs[i,1,:,:] = goal_map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
-
-            obs[i,2,:,:] = self.map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
+            obs[i,1,:,:] = agent_map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
 
 
         return pos, obs
