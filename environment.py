@@ -350,7 +350,7 @@ class Environment:
             obs[i,1,:,:] = agent_map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
 
 
-        return pos, obs
+        return obs, pos
 
     
     def render(self):
