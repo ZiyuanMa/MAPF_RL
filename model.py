@@ -101,4 +101,13 @@ class Network(nn.Module):
 
         v = self.v(latent)
 
-        return logp, v 
+        return logp, v
+    
+    def step(self, obs, pos):
+        with torch.no_grad():
+            logp, v = self(obs, pos)
+        
+        dist = Categorical(logits=logp)
+        a = dist.sample()
+
+        return a, logp, v

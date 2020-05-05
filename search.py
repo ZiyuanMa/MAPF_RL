@@ -3,6 +3,7 @@ import heapq
 import random
 import numpy as np
 import config
+from typing import List
 
 action_list = np.array([[0, 0],[-1, 0],[1, 0],[0, -1],[0, 1]], dtype=np.int8)
 
@@ -393,7 +394,7 @@ class CBSSolver(object):
         return root['paths']
 
 
-def find_path(env):
+def find_path(env) -> List[int]:
 
     map = np.copy(env.map)
 
