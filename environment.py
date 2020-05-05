@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import random
-
 from typing import List
+
 
 action_list = np.array([[0, 0],[-1, 0],[1, 0],[0, -1],[0, 1]], dtype=np.int)
 
@@ -82,13 +82,13 @@ class Environment:
 
         self.map_size = map_size
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
-        self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)
+        self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int)
         
         partition_list = map_partition(self.map)
         partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
 
         while len(partition_list) == 0:
-            self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)
+            self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int)
             partition_list = map_partition(self.map)
             partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
         
@@ -212,12 +212,12 @@ class Environment:
                 check_id.remove(agent_id)
 
                 if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]):
-                    rewards.append(config.stay_on_goal_reward)
+                    rewards.append(0)
                 else:
-                    rewards.append(config.stay_off_goal_reward)
+                    rewards.append(-0.125)
             else:
                 # move
-                rewards.append(config.move_reward)
+                rewards.append(-0.075)
 
 
         next_pos = np.copy(self.agents_pos)
@@ -233,13 +233,13 @@ class Environment:
 
             if np.any(next_pos[agent_id]<np.array([0,0])) or np.any(next_pos[agent_id]>=np.asarray(self.map_size)): 
                 # agent out of bound
-                rewards[agent_id] = config.collision_reward
+                rewards[agent_id] = -0.5
                 next_pos[agent_id] = self.agents_pos[agent_id]
                 check_id.remove(agent_id)
 
             elif self.map[tuple(next_pos[agent_id])] == 1:
                 # collide obstacle
-                rewards[agent_id] = config.collision_reward
+                rewards[agent_id] = -0.5
                 next_pos[agent_id] = self.agents_pos[agent_id]
                 check_id.remove(agent_id)
 
@@ -254,10 +254,10 @@ class Environment:
                     assert target_agent_id in check_id, 'not in check'
 
                     next_pos[agent_id] = self.agents_pos[agent_id]
-                    rewards[agent_id] = config.collision_reward
+                    rewards[agent_id] = -0.5
 
                     next_pos[target_agent_id] = self.agents_pos[target_agent_id]
-                    rewards[target_agent_id] = config.collision_reward
+                    rewards[target_agent_id] = -0.5
 
                     check_id.remove(agent_id)
                     check_id.remove(target_agent_id)
@@ -295,7 +295,7 @@ class Environment:
 
                     next_pos[collide_agent_id] = self.agents_pos[collide_agent_id]
                     for id in collide_agent_id:
-                        rewards[id] = config.collision_reward
+                        rewards[id] = -0.5
 
                     for id in collide_agent_id:
                         check_id.remove(id)
@@ -334,7 +334,9 @@ class Environment:
         obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.float32)
         pos = np.zeros((self.num_agents, 4), dtype=np.float32)
 
-        agent_map = np.zeros(self.map_size, dtype=np.float32)
+        obstacle_map = np.pad(self.map, 4, 'constant', constant_values=1)
+
+        agent_map = np.zeros((self.map_size[0]+2*self.obs_radius, self.map_size[1]+2*self.obs_radius), dtype=np.float32)
         agent_map[self.agents_pos[:,0], self.agents_pos[:,1]] = 1
 
         # goal_map = np.zeros(self.map_size, dtype=np.float32)
@@ -345,9 +347,9 @@ class Environment:
             pos[i][0:2] = self.agents_pos[i]
             pos[i][2:4] = self.goals_pos[i]
 
-            obs[i,0,:,:] = self.map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]==0
+            obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]==0
 
-            obs[i,1,:,:] = agent_map[x-self.obs_radius:x+self.obs_radius+1, y-self.obs_radius:y+self.obs_radius+1]
+            obs[i,1] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
 
         return obs, pos

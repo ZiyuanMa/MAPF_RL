@@ -29,16 +29,16 @@ class VecEnv:
 
             self.done_env_ids.clear()
 
-        return np.concatenate(self.obs), np.concatenate(self.pos)
+        return np.stack(self.obs), np.stack(self.pos)
 
-    def step(self, actions:List[list]):
+    def step(self, actions:List[List[list]]):
         rewards = []
         dones = []
 
         assert len(self.done_env_ids) == 0, 'need reset environment'
         assert len(actions) == len(self.envs), '{} actions but {} environments'.format(len(actions), len(self.envs))
 
-        for env_id, env, action in enumerate(zip(self.envs, actions)):
+        for env_id, (env, action) in enumerate(zip(self.envs, actions)):
             (o, p), r, d, info = env.step(action)
 
             self.obs[env_id] = o
@@ -47,7 +47,7 @@ class VecEnv:
             rewards.append(r)
             dones.append(d)
 
-        return np.concatenate(self.obs), np.concatenate(self.pos), rewards, dones
+        return np.stack(self.obs), np.stack(self.pos), rewards, dones
 
 
         

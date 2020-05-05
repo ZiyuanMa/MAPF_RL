@@ -29,10 +29,10 @@ class PPOBuffer:
     for calculating the advantages of state-action pairs.
     """
 
-    def __init__(self, obs_dim, act_dim, size, env_num, gamma=0.99, lam=0.95):
-        obs_dim=(4,84,84)
-        self.obs_buf = np.zeros(combined_shape(size, obs_dim), dtype=np.float32)
-        self.act_buf = np.zeros(combined_shape(size, act_dim), dtype=np.float32)
+    def __init__(self, size, env_num, gamma=0.99, lam=0.95):
+        self.obs_buf = np.zeros((size, 2, 9, 9), dtype=np.float32)
+        self.pos_buf = np.zeros((size, 4), dtype=np.float32)
+        self.act_buf = np.zeros((size, 5), dtype=np.float32)
         self.adv_buf = np.zeros(size, dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
@@ -95,8 +95,8 @@ class PPOBuffer:
         # the next two lines implement the advantage normalization trick
         # adv_mean, adv_std = mpi_statistics_scalar(self.adv_buf)
         # self.adv_buf = (self.adv_buf - adv_mean) / adv_std
-        data = [self.obs_buf, self.act_buf, self.ret_buf, self.logp_buf, self.val_buf, self.adv_buf]
-        return [ torch.as_tensor(i, dtype=torch.float32).to(device) for i in data]
+        data = [ self.obs_buf, self.act_buf, self.ret_buf, self.logp_buf, self.val_buf, self.adv_buf ]
+        return [ torch.as_tensor(i, dtype=torch.float32).to(device) for i in data ]
 
 
 
@@ -196,8 +196,6 @@ def ppo(env_name, env_num,
 
     # Instantiate environment
     env = VecEnv(env_num)
-    # obs_dim = env.envs[0].observation_space.shape
-    act_dim = 5
 
     # Create actor-critic module
     ac = actor_critic()
@@ -212,7 +210,7 @@ def ppo(env_name, env_num,
 
     # Set up experience buffer
     local_steps_per_epoch = steps_per_epoch // env_num
-    buf = PPOBuffer(obs_dim, act_dim, steps_per_epoch, env_num, gamma, lam)
+    buf = PPOBuffer(steps_per_epoch, env_num)
 
     # Set up function for computing PPO policy loss
     def compute_pi_loss(latent, act, adv, old_logp):
@@ -282,7 +280,7 @@ def ppo(env_name, env_num,
         #     # mpi_avg_grads(ac.v)    # average grads across MPI processes
         #     vf_optimizer.step()
         total_loss = 0
-        loader = DataLoader(list(zip(*data)), 64)
+        loader = DataLoader(list(zip(*data)), minibatch_size)
 
         for _ in range(4):
             total_loss = 0
@@ -327,7 +325,7 @@ def ppo(env_name, env_num,
 
     # Prepare for interaction with environment
     start_time = time.time()
-    o, ep_len = env.reset(), 0
+    (obs, pos), ep_len = env.reset(), 0
     # o = pre_processing(o)
     # memory = [np.copy(o) for _ in range(4)]
 
@@ -338,18 +336,9 @@ def ppo(env_name, env_num,
 
         for t in range(local_steps_per_epoch):
             
-            concat_o = np.stack(o, axis=0)
-            a, v, logp = ac.step(torch.as_tensor(concat_o, dtype=torch.float32).to(device))
+            a, v, logp = ac.step(torch.as_tensor(obs, dtype=torch.float32).to(device), torch.as_tensor(pos, dtype=torch.float32).to(device))
 
-            next_o, r, d = env.step(a)
-            # next_o = pre_processing(next_o)
-
-            # reward clipping
-            # if clip_reward is not None:
-            #     if r > clip_reward:
-            #         r = clip_reward
-            #     elif r < -clip_reward:
-            #         r = -clip_reward
+            next_obs, next_pos, r, d = env.step(a)
 
             ep_ret += sum(r)
             ep_len += 1
@@ -359,11 +348,7 @@ def ppo(env_name, env_num,
             logger.store(VVals=v.mean())
             
             # Update obs (critical!)
-            o = next_o
-
-            # update memory
-            # memory.pop(0)
-            # memory.append(np.copy(o))
+            obs, pos = next_obs, next_pos
 
             done = True in d
             epoch_ended = t==local_steps_per_epoch-1

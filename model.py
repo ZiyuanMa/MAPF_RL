@@ -90,6 +90,14 @@ class Network(nn.Module):
         self.v = nn.Linear(latent_dim, 1)
 
     def forward(self, obs, pos):
+
+        if obs.dim() == 5:
+            batch_size = obs.size(0)
+            obs = obs.view(-1, 2, 9, 9)
+            pos = pos.view(-1, 4)
+        else:
+            batch_size = 1
+
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
 
@@ -101,6 +109,10 @@ class Network(nn.Module):
 
         v = self.v(latent)
 
+        if batch_size != 1:
+            logp = logp.view(batch_size, -1, 5)
+            v = v.view(batch_size, -1, 1)
+
         return logp, v
     
     def step(self, obs, pos):
@@ -110,4 +122,4 @@ class Network(nn.Module):
         dist = Categorical(logits=logp)
         a = dist.sample()
 
-        return a, logp, v
+        return a.cpu().tolist(), logp.cpu().numpy(), v.cpu().numpy()
