@@ -8,11 +8,19 @@ from torchvision import transforms
 import gym
 import time
 from typing import Dict, List, Optional
-import core
+
 from vec_env import VecEnv
+from model import Network
 from logx import EpochLogger
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
+def combined_shape(length, shape=None):
+    if shape is None:
+        return (length,)
+    return (length, shape) if np.isscalar(shape) else (length, *shape)
+
+def count_vars(module):
+    return sum([np.prod(p.shape) for p in module.parameters()])
 
 class PPOBuffer:
     """
@@ -23,8 +31,8 @@ class PPOBuffer:
 
     def __init__(self, obs_dim, act_dim, size, env_num, gamma=0.99, lam=0.95):
         obs_dim=(4,84,84)
-        self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
-        self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
+        self.obs_buf = np.zeros(combined_shape(size, obs_dim), dtype=np.float32)
+        self.act_buf = np.zeros(combined_shape(size, act_dim), dtype=np.float32)
         self.adv_buf = np.zeros(size, dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
@@ -34,6 +42,7 @@ class PPOBuffer:
         self.gamma, self.lam = gamma, lam
         self.ptr, self.max_size = 0, size//env_num
         self.path_start_idx = [0 for _ in range(env_num)]
+
     def store(self, obs: List[np.ndarray], act: List[int], rew, val, logp):
         """
         Append one timestep of agent-environment interaction to the buffer.
@@ -95,7 +104,7 @@ def ppo(env_name, env_num,
         steps_per_epoch, minibatch_size, epochs, max_ep_len,
         gamma=0.99, clip_ratio=0.2, seed=0, 
         lam=0.97, ent_coef=0.01, v_coef=1, grad_norm=0.5,
-        target_kl=0.01, logger_kwargs=dict(), save_freq=10, actor_critic=core.CNNActorCritic):
+        target_kl=0.01, logger_kwargs=dict(), save_freq=10, actor_critic=Network):
     """
     Proximal Policy Optimization (by clipping), 
     with early stopping based on approximate KL
@@ -181,24 +190,24 @@ def ppo(env_name, env_num,
     logger.save_config(locals())
 
     # Random seed
-    seed += 10000 * proc_id()
+    seed += 10000
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     # Instantiate environment
-    env = VecEnv(env_name, env_num)
-    obs_dim = env.envs[0].observation_space.shape
-    act_dim = env.envs[0].action_space.shape
+    env = VecEnv(env_num)
+    # obs_dim = env.envs[0].observation_space.shape
+    act_dim = 5
 
     # Create actor-critic module
-    ac = actor_critic(env.envs[0].observation_space, env.envs[0].action_space)
+    ac = actor_critic()
     ac.to(device)
 
     # Sync params across processes
     # sync_params(ac)
 
     # Count variables
-    var_counts = tuple(core.count_vars(module) for module in [ac.pi, ac.v])
+    var_counts = tuple(count_vars(module) for module in [ac.pi, ac.v])
     logger.log('\nNumber of parameters: \t pi: %d, \t v: %d\n'%var_counts)
 
     # Set up experience buffer

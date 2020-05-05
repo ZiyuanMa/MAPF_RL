@@ -66,7 +66,7 @@ def map_partition(map):
 
 
 class Environment:
-    def __init__(self, map_size=(40,40), num_agents=16, obs_radius=4):
+    def __init__(self, map_size=(20,20), num_agents=2, obs_radius=4):
         '''
         self.map:
             0 = empty
