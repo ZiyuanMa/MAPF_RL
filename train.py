@@ -9,10 +9,8 @@ import gym
 import time
 from typing import Dict, List, Optional
 import core
-from vecenv import VecEnv
+from vec_env import VecEnv
 from logx import EpochLogger
-from mpi_pytorch import setup_pytorch_for_mpi, sync_params, mpi_avg_grads
-from mpi_tools import mpi_fork, mpi_avg, proc_id, mpi_statistics_scalar, num_procs
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 
@@ -428,7 +426,6 @@ if __name__ == '__main__':
     parser.add_argument('--exp_name', type=str, default='ppo')
     args = parser.parse_args()
 
-    # mpi_fork(args.cpu)  # run parallel code with mpi
 
     from run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
