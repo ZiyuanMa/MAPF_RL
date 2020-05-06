@@ -153,18 +153,19 @@ def _generate(device, env, qnet,
 
                 q_val = qnet(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
 
-                a = q_val.argmax(1).cpu().tolist()
+                actions = q_val.argmax(1).cpu().tolist()
 
-                if random.random() < epsilon:
-                    a[np.random.randint(0, 2)] = np.random.randint(0, 5)
+                for i in len(actions):
+                    if random.random() < epsilon:
+                        actions[i] = np.random.randint(0, 5)
 
         # take action in env
-        next_obs_pos, r, done, info = env.step(a)
+        next_obs_pos, r, done, info = env.step(actions)
     
 
         # return data and update observation
 
-        yield (obs_pos, a, r, next_obs_pos, int(done), imitation, info)
+        yield (obs_pos, actions, r, next_obs_pos, int(done), imitation, info)
 
 
         if done == False and env.steps < 200:

@@ -57,14 +57,15 @@ class Network(nn.Module):
         super().__init__()
         cnn_channel = 64
         latent_dim = 256
+        
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(2, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
+            nn.Conv2d(cnn_channel, cnn_channel*2, 3, 1, 1),
             nn.ReLU(True),
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
+            nn.Conv2d(cnn_channel*2, cnn_channel*2, 3, 1, 1),
             nn.ReLU(True),
-            nn.Conv2d(cnn_channel, 4, 1, 1),
+            nn.Conv2d(cnn_channel*2, 4, 1, 1),
             nn.ReLU(True),
             nn.Flatten(),
             nn.Linear(4*9*9, 240),
@@ -112,12 +113,3 @@ class Network(nn.Module):
             q_val = q_val.view(batch_size, -1, 5)
 
         return q_val
-    
-    def step(self, obs, pos):
-        with torch.no_grad():
-            adv_val, state_val = self(obs, pos)
-        
-        dist = Categorical(logits=adv_val)
-        a = dist.sample()
-
-        return a.cpu().tolist(), adv_val.cpu().numpy(), state_val.cpu().numpy()
