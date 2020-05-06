@@ -24,7 +24,7 @@ random.seed(0)
 def learn(  env, number_timesteps,
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'), save_path='./models', save_interval=500000,
             gamma=0.99, grad_norm=10,
-            exploration_final_eps=0.01, batch_size=64, train_freq=4,
+            exploration_final_eps=0.01, batch_size=32, train_freq=4,
             learning_starts=20000, target_network_update_freq=4000, buffer_size=50000,
             prioritized_replay=True, prioritized_replay_alpha=0.6,
             prioritized_replay_beta0=0.4):
@@ -36,8 +36,8 @@ def learn(  env, number_timesteps,
     qnet = network.to(device)
 
 
-    optimizer = Adam(qnet.parameters(), lr=1e-4)
-    scheduler = lr_scheduler.StepLR(optimizer, 95000, gamma=0.5)
+    optimizer = Adam(qnet.parameters(), lr=2.5e-4)
+    scheduler = lr_scheduler.StepLR(optimizer, 200000, gamma=0.5)
 
     tar_qnet = deepcopy(qnet)
 
@@ -201,4 +201,4 @@ if __name__ == '__main__':
     imitation_ratio = 0.3
 
     env = Environment()
-    learn(env, 5000000)
+    learn(env, 2000000)
