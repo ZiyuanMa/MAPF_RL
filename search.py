@@ -2,7 +2,6 @@ import time as timer
 import heapq
 import random
 import numpy as np
-import config
 from typing import List
 
 action_list = np.array([[0, 0],[-1, 0],[1, 0],[0, -1],[0, 1]], dtype=np.int8)
@@ -176,7 +175,7 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
             return path
 
         # Task 2.4
-        if curr['timestep'] >= config.max_steps:
+        if curr['timestep'] >= 200:
             continue
 
         for dir in range(5):
@@ -413,7 +412,6 @@ def find_path(env) -> List[int]:
 
     if paths is None:
         return None
-
 
     max_len = max([len(path) for path in paths])
 

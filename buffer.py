@@ -10,8 +10,6 @@ import random
 import numpy as np
 import torch
 
-import config
-
 
 class SegmentTree(object):
     def __init__(self, capacity, operation, neutral_element):
@@ -185,41 +183,47 @@ class ReplayBuffer(object):
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
     def _encode_sample(self, idxes):
-        b_obs, b_action, b_reward, b_post_obs, b_done, b_steps = [], [], [], [], [], []
+        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps = [], [], [], [], [], [], [], []
 
 
         for i in idxes:
-            obs, action, reward, post_obs, done, imitation, info = self._storage[i]
+            obs_pos, action, reward, next_obs_pos, done, imitation, info = self._storage[i]
 
             # reward = np.copy(reward)
             # look forward
             forward = 1
+            sum_reward = np.array(reward, dtype=np.float32)
             if imitation:
                 # print(imitation)
-                for j in range(1,config.max_steps):
+                for j in range(1, 200):
                     next_idx = (i+j) % self._maxsize
                     if next_idx != self._next_idx and not done:
-                        _, _, next_reward, post_obs, done, imitation, info = self._storage[next_idx]
-                        reward += next_reward * config.gamma ** j
+                        _, _, next_reward, next_obs_pos, done, imitation, info = self._storage[next_idx]
+
+                        sum_reward += np.array(next_reward, dtype=np.float32) * 0.99 ** j
                         forward += 1
 
                     else:
                         break
 
-            b_obs.append(obs)
+            b_obs.append(obs_pos[0])
+            b_pos.append(obs_pos[1])
             b_action.append(action)
-            b_reward.append(reward)
-            b_post_obs.append(post_obs)
+            b_reward.append(sum_reward)
+            b_next_obs.append(next_obs_pos[0])
+            b_next_pos.append(next_obs_pos[1])
             b_done.append(done)
             b_steps.append(forward)
 
         res = (
-            torch.stack(b_obs),
-            torch.LongTensor(b_action).unsqueeze(1).to(self._device),
-            torch.FloatTensor(b_reward).unsqueeze(1).to(self._device),
-            torch.stack(b_post_obs),
-            torch.FloatTensor(b_done).unsqueeze(1).to(self._device),
-            torch.FloatTensor(b_steps).unsqueeze(1).to(self._device),
+            torch.from_numpy(np.stack(b_obs)).to(self._device),
+            torch.from_numpy(np.stack(b_pos)).to(self._device),
+            torch.LongTensor(b_action).unsqueeze(2).to(self._device),
+            torch.FloatTensor(b_reward).unsqueeze(2).to(self._device),
+            torch.from_numpy(np.stack(b_next_obs)).to(self._device),
+            torch.from_numpy(np.stack(b_next_pos)).to(self._device),
+            torch.FloatTensor(b_done).unsqueeze(1).unsqueeze(2).to(self._device),
+            torch.FloatTensor(b_steps).unsqueeze(1).unsqueeze(2).to(self._device),
         ) 
 
         return res

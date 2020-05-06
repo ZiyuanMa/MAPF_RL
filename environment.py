@@ -313,7 +313,7 @@ class Environment:
         # check done
         if np.array_equal(self.agents_pos, self.goals_pos):
             done = True
-            rewards = [ config.finish_reward for _ in range(self.num_agents) ]
+            rewards = [ 3 for _ in range(self.num_agents) ]
         else:
             done = False
 

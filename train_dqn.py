@@ -14,7 +14,6 @@ import argparse
 from buffer import ReplayBuffer, PrioritizedReplayBuffer
 from model_dqn import Network
 from environment import Environment
-import config
 from search import find_path
 
 torch.manual_seed(0)
@@ -23,28 +22,18 @@ random.seed(0)
 
 
 def learn(  env, number_timesteps,
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'), save_path='./models', save_interval=config.save_interval,
-            gamma=config.gamma, grad_norm=config.grad_norm, double_q=config.double_q,
-            exploration_final_eps=config.exploration_final_eps, batch_size=config.batch_size, train_freq=config.train_freq,
-            learning_starts=config.learning_starts, target_network_update_freq=config.target_network_update_freq, buffer_size=config.buffer_size,
-            prioritized_replay=config.prioritized_replay, prioritized_replay_alpha=config.prioritized_replay_alpha,
-            prioritized_replay_beta0=config.prioritized_replay_beta0):
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'), save_path='./models', save_interval=500000,
+            gamma=0.99, grad_norm=10,
+            exploration_final_eps=0.01, batch_size=64, train_freq=4,
+            learning_starts=20000, target_network_update_freq=4000, buffer_size=50000,
+            prioritized_replay=True, prioritized_replay_alpha=0.6,
+            prioritized_replay_beta0=0.4):
 
     # create network and optimizer
     network = Network()
 
-
-
-    # optimizer = Adam(
-    #     filter(lambda p: p.requires_grad, network.parameters()),
-    #     lr=1e-3, eps=1e-5
-    # )
-
     # create target network
     qnet = network.to(device)
-    qnet.load_state_dict(torch.load('./model.pth'))
-    # for param in qnet.encoder.parameters():
-    #     param.requires_grad = False
 
 
     optimizer = Adam(qnet.parameters(), lr=1e-4)
@@ -76,19 +65,19 @@ def learn(  env, number_timesteps,
 
         # update qnet
         if n_iter > learning_starts and n_iter % train_freq == 0:
-            b_obs, b_action, b_reward, b_obs_, b_done, b_steps, *extra = buffer.sample(batch_size)
+            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, *extra = buffer.sample(batch_size)
 
 
             with torch.no_grad():
                 # choose max q index from next observation
                 # double q-learning
-                b_action_ = qnet(b_obs_).argmax(1).unsqueeze(1)
-                b_q_ = (1 - b_done) * tar_qnet(b_obs_).gather(1, b_action_)
+                b_action_ = qnet(b_next_obs, b_next_pos).argmax(2).unsqueeze(2)
+                b_q_ = (1 - b_done) * tar_qnet(b_next_obs, b_next_pos).gather(2, b_action_)
 
 
-            b_q = qnet(b_obs).gather(1, b_action)
+            b_q = qnet(b_obs, b_pos).gather(2, b_action)
 
-            abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs()
+            abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs().mean(1)
 
             priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
 
@@ -137,23 +126,21 @@ def _generate(device, env, qnet,
             exploration_final_eps):
 
     """ Generate training batch sample """
-    explore_steps = (config.exploration_start_eps-exploration_final_eps) / number_timesteps
+    explore_steps = (1.0-exploration_final_eps) / number_timesteps
 
-    obs, pos = env.reset()
+    obs_pos = env.reset()
     done = False
 
     # if use imitation learning
-    imitation = True if random.random() < config.imitation_ratio else False
+    imitation = True if random.random() < 0.3 else False
     if imitation:
         imitation_actions = find_path(env)
 
     while imitation and imitation_actions is None:
-        o = env.reset()
+        obs_pos = env.reset()
         imitation_actions = find_path(env)
 
-    o = torch.from_numpy(o).to(device)
-
-    epsilon = config.exploration_start_eps
+    epsilon = 1.0
     for _ in range(1, number_timesteps + 1):
 
         if imitation:
@@ -164,42 +151,36 @@ def _generate(device, env, qnet,
             # sample action
             with torch.no_grad():
 
-                q_val = qnet(torch.from_numpy(obs).to(device), torch.from_numpy(pos).to(device))
+                q_val = qnet(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
 
                 a = q_val.argmax(1).cpu().tolist()
 
                 if random.random() < epsilon:
-                    a[np.random.randint(0, 2)] = np.random.randint(0, config.action_space)
+                    a[np.random.randint(0, 2)] = np.random.randint(0, 5)
 
         # take action in env
-        (next_obs, next_pos), r, done, info = env.step(a)
+        next_obs_pos, r, done, info = env.step(a)
     
 
         # return data and update observation
 
-        yield (o[0,:,:,:], a[0], r[0].item(), o_[0,:,:,:], int(done[0]), imitation, info)
+        yield (obs_pos, a, r, next_obs_pos, int(done), imitation, info)
 
 
-        if done[0] == False and env.steps < config.max_steps:
+        if done == False and env.steps < 200:
 
-            o = o_ 
+            obs_pos = next_obs_pos 
         else:
-            o = env.reset()
-            done = [False for _ in range(env.num_agents)]
+            obs_pos = env.reset()
+            done = False
 
-            imitation = True if random.random() < config.imitation_ratio else False
+            imitation = True if random.random() < 0.3 else False
             imitation_actions = find_path(env)
 
             while imitation_actions is None:
-                o = env.reset()
+                obs_pos = env.reset()
                 imitation_actions = find_path(env)
 
-            o = torch.from_numpy(o).to(device)
-            # if imitation:
-            #     print(env.map)
-            #     print(env.agents_pos)
-            #     print(env.goals_pos)
-            #     print(imitation_actions)
         
         epsilon -= explore_steps
             
@@ -217,5 +198,7 @@ if __name__ == '__main__':
     explore_start_eps = 1.0
     explore_final_eps = 0.01
 
+    imitation_ratio = 0.3
+
     env = Environment()
-    learn(env, 1000000)
+    learn(env, 5000000)
