@@ -22,7 +22,7 @@ random.seed(0)
 
 
 def learn(  env, number_timesteps,
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'), save_path='./models', save_interval=500000,
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'), save_path='./models', save_interval=50000,
             gamma=0.99, grad_norm=10,
             exploration_final_eps=0.01, batch_size=32, train_freq=4,
             learning_starts=20000, target_network_update_freq=4000, buffer_size=50000,
@@ -145,7 +145,7 @@ def _generate(device, env, qnet,
 
         if imitation:
 
-            a = imitation_actions.pop(0)
+            actions = imitation_actions.pop(0)
 
         else:
             # sample action
@@ -155,7 +155,7 @@ def _generate(device, env, qnet,
 
                 actions = q_val.argmax(1).cpu().tolist()
 
-                for i in len(actions):
+                for i in range(len(actions)):
                     if random.random() < epsilon:
                         actions[i] = np.random.randint(0, 5)
 
