@@ -85,8 +85,8 @@ class Network(nn.Module):
 
         # self.recurrent = nn.GRUCell(latent_dim, latent_dim)
 
+        # dueling q structure
         self.adv = nn.Linear(latent_dim, 5)
-
         self.state = nn.Linear(latent_dim, 1)
 
     def forward(self, obs, pos):
@@ -100,13 +100,10 @@ class Network(nn.Module):
 
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
-
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
-
         latent = self.concat_encoder(concat_latent)
 
         adv_val = self.adv(latent)
-
         state_val = self.state(latent)
 
         q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)

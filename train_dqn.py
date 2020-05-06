@@ -139,55 +139,41 @@ def _generate(device, env, qnet,
     """ Generate training batch sample """
     explore_steps = (config.exploration_start_eps-exploration_final_eps) / number_timesteps
 
-    o = env.reset()
-    done = [False for _ in range(env.num_agents)]
+    obs, pos = env.reset()
+    done = False
+
     # if use imitation learning
     imitation = True if random.random() < config.imitation_ratio else False
-    imitation_actions = find_path(env)
+    if imitation:
+        imitation_actions = find_path(env)
 
-    while imitation_actions is None:
+    while imitation and imitation_actions is None:
         o = env.reset()
         imitation_actions = find_path(env)
 
     o = torch.from_numpy(o).to(device)
 
     epsilon = config.exploration_start_eps
-    for n in range(1, number_timesteps + 1):
+    for _ in range(1, number_timesteps + 1):
 
         if imitation:
 
             a = imitation_actions.pop(0)
-            # print(a)
 
         else:
             # sample action
             with torch.no_grad():
-                ob = o
 
-                # 1 x 3 x 3 x 8 x 8
-                q = qnet(ob)
-                # 1 x 3 x 5 or 1 x 3 x 5 x atom_num
+                q_val = qnet(torch.from_numpy(obs).to(device), torch.from_numpy(pos).to(device))
 
-                a = q.argmax(1).cpu().tolist()
+                a = q_val.argmax(1).cpu().tolist()
 
                 if random.random() < epsilon:
-                    a[0] = np.random.randint(0, config.action_space)
-                
-                for i, d in enumerate(done):
-                    if d:
-                        a[i] = 0
-
+                    a[np.random.randint(0, 2)] = np.random.randint(0, config.action_space)
 
         # take action in env
-        o_, r, done, info = env.step(a)
-
-        # env.render()
-        # print(a)
-        # print(r)
-
-        o_ = torch.from_numpy(o_).to(device)
-        # print(r)
-        
+        (next_obs, next_pos), r, done, info = env.step(a)
+    
 
         # return data and update observation
 
@@ -228,6 +214,8 @@ if __name__ == '__main__':
 
     # a = np.array([[[1,2],[3,4]], [[5,6],[7,8]]])
     # print(a[[0,1],[0,1],[0,1]])
+    explore_start_eps = 1.0
+    explore_final_eps = 0.01
 
     env = Environment()
     learn(env, 1000000)
