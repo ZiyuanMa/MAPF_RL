@@ -43,13 +43,14 @@ class PPOBuffer:
         self.ptr, self.max_size = 0, size//env_num
         self.path_start_idx = [0 for _ in range(env_num)]
 
-    def store(self, obs: List[np.ndarray], act: List[int], rew, val, logp):
+    def store(self, obs:List[np.ndarray], pos:List[np.ndarray], act:List[int], rew, val, logp):
         """
         Append one timestep of agent-environment interaction to the buffer.
         """
         assert self.ptr < self.max_size     # buffer has to have room so you can store
         for i in range(self.env_num):
             self.obs_buf[self.ptr+i*self.max_size] = obs[i]
+            self.pos_buf[self.ptr+i*self.max_size] = pos[i]
             self.act_buf[self.ptr+i*self.max_size] = act[i]
             self.rew_buf[self.ptr+i*self.max_size] = rew[i]
             self.val_buf[self.ptr+i*self.max_size] = val[i]
@@ -325,14 +326,12 @@ def ppo(env_name, env_num,
 
     # Prepare for interaction with environment
     start_time = time.time()
-    (obs, pos), ep_len = env.reset(), 0
-    # o = pre_processing(o)
-    # memory = [np.copy(o) for _ in range(4)]
 
     # Main loop: collect experience in env and update/log each epoch
     for epoch in range(epochs):
         ep_num = 0
         ep_ret = 0
+        (obs, pos), ep_len = env.reset(), 0
 
         for t in range(local_steps_per_epoch):
             
@@ -340,7 +339,8 @@ def ppo(env_name, env_num,
 
             next_obs, next_pos, r, d = env.step(a)
 
-            ep_ret += sum(r)
+            sum_r = [ sum(rew) for rew in r ]
+            ep_ret += sum(sum_r)/env_num
             ep_len += 1
 
             # save and log
@@ -416,7 +416,7 @@ if __name__ == '__main__':
     parser.add_argument('--steps', type=int, default=1024, help='number of steps per epoch')
     parser.add_argument('--max_ep', type=int, default=128, help='max length for one episode')
     parser.add_argument('--epochs', type=int, default=2000)
-    parser.add_argument('--clip_rew', type=int, default=10)
+    parser.add_argument('--horizon', type=int, default=16)
     parser.add_argument('--exp_name', type=str, default='ppo')
     args = parser.parse_args()
 
