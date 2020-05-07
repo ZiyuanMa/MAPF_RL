@@ -26,7 +26,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             gamma=config.gamma, grad_norm=config.grad_norm_dqn,
             batch_size=config.batch_size_dqn, train_freq=config.train_freq,
             learning_starts=config.learning_starts, target_network_update_freq=config.target_network_update_freq,
-            buffer_size=config.buffer_size, max_steps=config.max_steps,
+            buffer_size=config.buffer_size, max_steps=config.max_steps, imitation_ratio=config.imitation_ratio,
             prioritized_replay_alpha=config.prioritized_replay_alpha, prioritized_replay_beta=config.prioritized_replay_beta):
 
     # create network
@@ -41,7 +41,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
     # create replay buffer
     buffer = PrioritizedReplayBuffer(buffer_size, device, prioritized_replay_alpha, prioritized_replay_beta)
 
-    generator = _generate(env, qnet, training_timesteps, max_steps, explore_start_eps, explore_final_eps)
+    generator = _generate(env, qnet, training_timesteps, max_steps, imitation_ratio, explore_start_eps, explore_final_eps)
 
     start_ts = time.time()
     for n_iter in range(1, training_timesteps + 1):
@@ -50,7 +50,6 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             
         data = generator.__next__()
         buffer.add(data)
-
 
         # update qnet
         if n_iter > learning_starts and n_iter % train_freq == 0:
@@ -74,7 +73,6 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
                 loss = (extra[0] * huber_loss(abs_td_error)).mean()
             else:
                 loss = huber_loss(abs_td_error).mean()
-
 
             optimizer.zero_grad()
 
@@ -108,9 +106,11 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
         if save_interval and n_iter % save_interval == 0:
             torch.save(qnet.state_dict(), os.path.join(save_path, '{}.pth'.format(n_iter)))
 
+    torch.save(qnet.state_dict(), os.path.join(save_path, 'model.pth'))
+
 
 def _generate(env, qnet,
-            training_timesteps, max_steps,
+            training_timesteps, max_steps, imitation_ratio,
             explore_start_eps, exploration_final_eps):
 
     """ Generate training batch sample """
@@ -120,7 +120,7 @@ def _generate(env, qnet,
     done = False
 
     # if use imitation learning
-    imitation = True if random.random() < 0.5 else False
+    imitation = True if random.random() < imitation_ratio else False
     if imitation:
         imitation_actions = find_path(env)
 
@@ -165,7 +165,7 @@ def _generate(env, qnet,
             obs_pos = env.reset()
             done = False
 
-            imitation = True if random.random() < 0.5 else False
+            imitation = True if random.random() < imitation_ratio else False
             imitation_actions = find_path(env)
 
             while imitation_actions is None:

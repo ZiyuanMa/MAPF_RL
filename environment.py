@@ -72,7 +72,7 @@ def map_partition(map):
 
 class Environment:
     def __init__(self, map_length:Union[int,list]=config.map_length, num_agents:Union[int,list,tuple]=config.num_agents,
-                obs_radius=config.obs_radius, reward_fn=config.reward_fn):
+                obs_radius:int=config.obs_radius, reward_fn:dict=config.reward_fn):
         '''
         self.map_length:
             x                   fixed map size (x, x)

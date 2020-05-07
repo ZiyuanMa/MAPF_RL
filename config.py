@@ -32,14 +32,14 @@ grad_norm_dqn=10
 
 # epsilon greedy
 explore_start_eps = 1.0
-explore_final_eps = 0.01
+explore_final_eps = 0.1
 
 # prioritized replay
 prioritized_replay_alpha=0.6
 prioritized_replay_beta=0.4
 
 # imitation learning
-imitation_ratio = 0.3
+imitation_ratio = 0.6
 
 # dqn network setting
 cnn_channel = 64

@@ -51,7 +51,7 @@ def test_model(num_agents):
 
 
     network = Network()
-    state_dict = torch.load('./models/500000.pth')
+    state_dict = torch.load('./models/750000.pth')
     network.load_state_dict(state_dict)
     network.eval()
     network.to(device)
