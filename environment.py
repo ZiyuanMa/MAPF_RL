@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import colors
 import random
-from typing import List
+from typing import List, Union
 
 import config
 
@@ -71,8 +71,8 @@ def map_partition(map):
 
 
 class Environment:
-    def __init__(self, map_length=config.map_length, num_agents=config.num_agents, obs_radius=config.obs_radius,
-                reward_fn=config.reward_fn):
+    def __init__(self, map_length:Union[int,list]=config.map_length, num_agents:Union[int,list,tuple]=config.num_agents,
+                obs_radius=config.obs_radius, reward_fn=config.reward_fn):
         '''
         self.map_length:
             x                   fixed map size (x, x)

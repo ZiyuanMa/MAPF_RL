@@ -10,6 +10,7 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import random
 import argparse
+from typing import Union
 import config
 torch.manual_seed(0)
 np.random.seed(0)
@@ -17,7 +18,7 @@ random.seed(0)
 test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def create_test(num_agents):
+def create_test(num_agents:Union[int,list,tuple]):
 
     name = './test{}.pkl'.format(num_agents) if num_agents != None else './test.pkl'
 

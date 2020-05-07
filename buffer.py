@@ -189,12 +189,11 @@ class ReplayBuffer(object):
         for i in idxes:
             obs_pos, action, reward, next_obs_pos, done, imitation, info = self._storage[i]
 
-            # reward = np.copy(reward)
-            # look forward
             forward = 1
             sum_reward = np.array(reward, dtype=np.float32)
+
+            # use Monte Carlo method if it's imitation
             if imitation:
-                # print(imitation)
                 for j in range(1, 200):
                     next_idx = (i+j) % self._maxsize
                     if next_idx != self._next_idx and not done:
