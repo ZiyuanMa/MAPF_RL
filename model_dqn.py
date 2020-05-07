@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions.categorical import Categorical
 
+import config
 
 # class ResBlock(nn.Module):
 #     def __init__(self, channel):
@@ -53,13 +53,14 @@ class ResBlock(nn.Module):
         return x
 
 class Network(nn.Module):
-    def __init__(self):
+    def __init__(self, cnn_channel=config.cnn_channel,
+                obs_dim=config.obs_dim, obs_latent_dim=config.obs_latent_dim,
+                pos_dim=config.pos_dim, pos_latent_dim=config.pos_latent_dim):
+
         super().__init__()
-        cnn_channel = 64
-        latent_dim = 256
-        
+
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(2, cnn_channel, 3, 1, 1),
+            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
             nn.Conv2d(cnn_channel, cnn_channel*2, 3, 1, 1),
             nn.ReLU(True),
@@ -68,27 +69,33 @@ class Network(nn.Module):
             nn.Conv2d(cnn_channel*2, 4, 1, 1),
             nn.ReLU(True),
             nn.Flatten(),
-            nn.Linear(4*9*9, 240),
+            nn.Linear(4*9*9, obs_latent_dim),
             nn.ReLU(True),
         )
 
         self.pos_encoder = nn.Sequential(
-            nn.Linear(4, 16),
+            nn.Linear(pos_dim, pos_latent_dim),
             nn.ReLU(True),
-            nn.Linear(16, 16),
+            nn.Linear(pos_latent_dim, pos_latent_dim),
             nn.ReLU(True),
         )
 
         self.concat_encoder = nn.Sequential(
-            ResBlock(latent_dim), 
-            ResBlock(latent_dim),
+            ResBlock(obs_latent_dim+pos_latent_dim), 
+            ResBlock(obs_latent_dim+pos_latent_dim),
         )
 
         # self.recurrent = nn.GRUCell(latent_dim, latent_dim)
 
         # dueling q structure
-        self.adv = nn.Linear(latent_dim, 5)
-        self.state = nn.Linear(latent_dim, 1)
+        self.adv = nn.Linear(obs_latent_dim+pos_latent_dim, 5)
+        self.state = nn.Linear(obs_latent_dim+pos_latent_dim, 1)
+
+
+        for _, m in self.named_modules():
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, obs, pos):
 

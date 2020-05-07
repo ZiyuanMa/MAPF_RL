@@ -5,6 +5,8 @@ from matplotlib import colors
 import random
 from typing import List
 
+import config
+
 
 action_list = np.array([[0, 0],[-1, 0],[1, 0],[0, -1],[0, 1]], dtype=np.int)
 
@@ -16,6 +18,9 @@ color_map = np.array([[255, 255, 255],   # white
 
 
 def map_partition(map):
+    '''
+    partition map into independent partitions so assign agent position and goal position of one agent in the same partition 
+    '''
 
     empty_pos = np.argwhere(map==0).astype(np.int).tolist()
 
@@ -66,22 +71,41 @@ def map_partition(map):
 
 
 class Environment:
-    def __init__(self, map_size=(20,20), num_agents=2, obs_radius=4):
+    def __init__(self, map_length=config.map_length, num_agents=config.num_agents, obs_radius=config.obs_radius,
+                reward_fn=config.reward_fn):
         '''
+        self.map_length:
+            x                   fixed map size (x, x)
+            [x1, x2,...xn]      randomly choose one from x1 to xn as map side length every time reset environment
+
         self.map:
             0 = empty
             1 = obstacle
+
+        self.num_agents:
+            x                   fixed number of agents x
+            (x, y)              randomly choose one from range x to y every time reset environment
+            [x1, x2, ... xn]    randomly choose one from x1 to xn every time reset environment
         '''
 
-        if num_agents == None:
-            self.random_agents = True
-            self.num_agents = random.randint(2, 4)
-        else:
-            self.random_agents = False
+        self.num_agents_range = num_agents
+        if isinstance(num_agents, int):
             self.num_agents = num_agents
+        elif isinstance(num_agents, tuple):
+            self.num_agents = random.randint(*num_agents)
+        elif isinstance(num_agents, list):
+            self.num_agents = random.choice(num_agents)
 
-        self.map_size = map_size
+        self.map_length = map_length
+        if isinstance(map_length, int):
+            self.map_size = (map_length, map_length)
+        elif isinstance(map_length, list):
+            length = random.choice(map_length)
+            self.map_size = (length, length)
+
+        # set as same as in PRIMAL
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
+
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int)
         
         partition_list = map_partition(self.map)
@@ -98,6 +122,7 @@ class Environment:
 
         pos_num = sum([ len(partition) for partition in partition_list ])
         
+        # loop to assign agent position and goal position for each agent
         for i in range(self.num_agents):
 
             pos_idx = random.randint(0, pos_num-1)
@@ -122,13 +147,23 @@ class Environment:
 
         self.obs_radius = obs_radius
 
+        self.reward_fn = reward_fn
+
         self.steps = 0
 
-        self.history = [np.copy(self.agents_pos)]
+        # self.history = [np.copy(self.agents_pos)]
 
     def reset(self):
-        if self.random_agents:
-            self.num_agents = random.randint(2, 4)
+
+        if isinstance(self.num_agents_range, tuple):
+            self.num_agents = random.randint(*self.num_agents_range)
+        elif isinstance(self.num_agents_range, list):
+            self.num_agents = random.choice(self.num_agents_range)
+
+        if isinstance(self.map_length, list):
+            length = random.choice(self.map_length)
+            self.map_size = (length, length)
+
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)
         
@@ -170,19 +205,20 @@ class Environment:
 
         self.steps = 0
 
-        self.history = [np.copy(self.agents_pos)]
+        # self.history = [np.copy(self.agents_pos)]
 
         return self.observe()
 
-    def load(self, world: np.ndarray, agents_pos: np.ndarray, goals_pos: np.ndarray):
+    def load(self, map:np.ndarray, agents_pos:np.ndarray, goals_pos:np.ndarray):
+        ''' load map, use for testing'''
 
-        self.map = np.copy(world)
+        self.map = np.copy(map)
         self.agents_pos = np.copy(agents_pos)
         self.goals_pos = np.copy(goals_pos)
 
         self.num_agents = agents_pos.shape[0]
 
-        self.history = [np.copy(self.agents_pos)]
+        # self.history = [np.copy(self.agents_pos)]
         
         self.steps = 0
 
@@ -204,20 +240,20 @@ class Environment:
 
         rewards = []
 
-        # remove no movement agent id
+        # remove unmoving agent id
         for agent_id in check_id.copy():
 
             if actions[agent_id] == 0:
-                # stay
+                # unmoving
                 check_id.remove(agent_id)
 
                 if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]):
-                    rewards.append(0)
+                    rewards.append(self.reward_fn['stay_on_goal'])
                 else:
-                    rewards.append(-0.125)
+                    rewards.append(self.reward_fn['stay_off_goal'])
             else:
                 # move
-                rewards.append(-0.075)
+                rewards.append(self.reward_fn['move'])
 
 
         next_pos = np.copy(self.agents_pos)
@@ -232,18 +268,18 @@ class Environment:
             # move
 
             if np.any(next_pos[agent_id]<np.array([0,0])) or np.any(next_pos[agent_id]>=np.asarray(self.map_size)): 
-                # agent out of bound
-                rewards[agent_id] = -0.5
+                # agent out of map bound
+                rewards[agent_id] = self.reward_fn['collision']
                 next_pos[agent_id] = self.agents_pos[agent_id]
                 check_id.remove(agent_id)
 
             elif self.map[tuple(next_pos[agent_id])] == 1:
                 # collide obstacle
-                rewards[agent_id] = -0.5
+                rewards[agent_id] = self.reward_fn['collision']
                 next_pos[agent_id] = self.agents_pos[agent_id]
                 check_id.remove(agent_id)
 
-        # agent swap
+        # agent swapping conflict
         for agent_id in check_id:
             if np.any(np.all(next_pos[agent_id]==self.agents_pos, axis=1)):
 
@@ -254,14 +290,15 @@ class Environment:
                     assert target_agent_id in check_id, 'not in check'
 
                     next_pos[agent_id] = self.agents_pos[agent_id]
-                    rewards[agent_id] = -0.5
+                    rewards[agent_id] = self.reward_fn['collision']
 
                     next_pos[target_agent_id] = self.agents_pos[target_agent_id]
-                    rewards[target_agent_id] = -0.5
+                    rewards[target_agent_id] = self.reward_fn['collision']
 
                     check_id.remove(agent_id)
                     check_id.remove(target_agent_id)
 
+        # agent collision conflict
         flag = False
         while not flag:
             
@@ -279,7 +316,7 @@ class Environment:
                             break
 
                     if not all_in:
-                        # agent collide no movement agent
+                        # agent collide unmoving agent
                         collide_agent_id = [ id for id in collide_agent_id if id in check_id]
 
                     else:
@@ -295,7 +332,7 @@ class Environment:
 
                     next_pos[collide_agent_id] = self.agents_pos[collide_agent_id]
                     for id in collide_agent_id:
-                        rewards[id] = -0.5
+                        rewards[id] = self.reward_fn['collision']
 
                     for id in collide_agent_id:
                         check_id.remove(id)
@@ -303,9 +340,8 @@ class Environment:
                     flag = False
                     break
 
-                
 
-        self.history.append(np.copy(next_pos))
+        # self.history.append(np.copy(next_pos))
         self.agents_pos = np.copy(next_pos)
 
         self.steps += 1
@@ -313,24 +349,33 @@ class Environment:
         # check done
         if np.array_equal(self.agents_pos, self.goals_pos):
             done = True
-            rewards = [ 3 for _ in range(self.num_agents) ]
+            rewards = [ self.reward_fn['finish'] for _ in range(self.num_agents) ]
         else:
             done = False
 
         info = {'step': self.steps-1}
 
+        # make sure no overlapping agents
         if np.unique(self.agents_pos, axis=0).shape[0] < self.num_agents:
-            # no overlapping agents
             print(self.steps)
             print(self.map)
             print(self.agents_pos)
-            print(self.history[-1])
             raise RuntimeError('unique')
 
         return self.observe(), rewards, done, info
 
 
     def observe(self):
+        '''
+        return observation and position for each agent
+
+        obs: tensor consists of two layers, (2, 2*self.obs_radius+1, 2*self.obs_radius+1)
+            layer 1: obstacle, note 0 represents obstacle because we are using 0 padding in CNN 
+            layer 2: other agents
+        
+        pos: vector of length 4, current agent position and goal position
+
+        '''
         obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.float32)
         pos = np.zeros((self.num_agents, 4), dtype=np.float32)
 
@@ -352,9 +397,7 @@ class Environment:
 
             obs[i,1] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
-
         return obs, pos
-
     
     def render(self):
         map = np.copy(self.map)

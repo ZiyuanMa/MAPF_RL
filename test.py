@@ -10,6 +10,7 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import random
 import argparse
+import config
 torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
@@ -49,7 +50,7 @@ def test_model(num_agents):
 
 
     network = Network()
-    state_dict = torch.load('./models/2000000.pth')
+    state_dict = torch.load('./models/500000.pth')
     network.load_state_dict(state_dict)
     network.eval()
     network.to(device)
@@ -68,7 +69,7 @@ def test_model(num_agents):
 
         env = Environment()
         case = 1
-        show = True
+        show = False
         show_steps = 20
         fail = 0
         optimal = 0
@@ -78,7 +79,7 @@ def test_model(num_agents):
             
             done = False
 
-            while not done and env.steps<200:
+            while not done and env.steps < config.max_steps:
                 if i == case and show and env.steps < show_steps:
                     env.render()
 
