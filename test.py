@@ -51,7 +51,7 @@ def test_model(num_agents):
 
 
     network = Network()
-    state_dict = torch.load('./models/50000.pth')
+    state_dict = torch.load('./models/1500000.pth')
     network.load_state_dict(state_dict)
     network.eval()
     network.to(device)
@@ -69,7 +69,7 @@ def test_model(num_agents):
 
 
         env = Environment()
-        case = 1
+        case = 17
         show = True
         show_steps = 20
         fail = 0
@@ -79,8 +79,9 @@ def test_model(num_agents):
             env.load(tests['maps'][i], tests['agents'][i], tests['goals'][i])
             
             done = False
+            network.reset()
 
-            while not done and env.steps < config.max_steps:
+            while not done and env.steps < config.max_steps*2:
                 if i == case and show and env.steps < show_steps:
                     env.render()
 
@@ -90,7 +91,7 @@ def test_model(num_agents):
 
                 with torch.no_grad():
 
-                    q_vals = network(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
+                    q_vals = network.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
 
 
                 if i == case and show and env.steps < show_steps:

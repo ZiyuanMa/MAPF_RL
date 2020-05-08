@@ -382,8 +382,9 @@ class Environment:
         # 0 represents obstacle to match 0 padding in CNN 
         obstacle_map = np.pad(self.map, self.obs_radius, 'constant', constant_values=1)==0
 
-        agent_map = np.zeros((self.map_size[0]+2*self.obs_radius, self.map_size[1]+2*self.obs_radius), dtype=np.float32)
+        agent_map = np.zeros((self.map_size), dtype=np.float32)
         agent_map[self.agents_pos[:,0], self.agents_pos[:,1]] = 1
+        agent_map = np.pad(agent_map, self.obs_radius, 'constant', constant_values=0)
 
         # goal_map = np.zeros(self.map_size, dtype=np.float32)
         # goal_map[self.goals_pos[:,0], self.goals_pos[:,1]] = 1
@@ -396,6 +397,7 @@ class Environment:
             obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
             obs[i,1] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
+            obs[i,1,self.obs_radius,self.obs_radius] = 1
 
         return obs, pos
     

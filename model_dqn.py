@@ -31,20 +31,24 @@ import config
 #         return out
 
 class ResBlock(nn.Module):
-    def __init__(self, channel):
+    def __init__(self, channel, type='linear'):
         super().__init__()
-
-        self.linear1 = nn.Linear(channel, channel)
-
-        self.linear2 = nn.Linear(channel, channel)
+        if type == 'cnn':
+            self.block1 = nn.Conv2d(channel, channel, 3, 1, 1)
+            self.block2 = nn.Conv2d(channel, channel, 3, 1, 1)
+        elif type == 'linear':
+            self.block1 = nn.Linear(channel, channel)
+            self.block2 = nn.Linear(channel, channel)
+        else:
+            raise RuntimeError('type does not support')
 
     def forward(self, x):
         identity = x
 
-        x = self.linear1(x)
+        x = self.block1(x)
         x = F.relu(x)
 
-        x = self.linear2(x)
+        x = self.block2(x)
 
         x += identity
 
@@ -66,8 +70,7 @@ class Network(nn.Module):
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
-            nn.ReLU(True),
+            ResBlock(cnn_channel, type='cnn'),
             nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
             nn.Conv2d(cnn_channel, 4, 1, 1),
@@ -127,24 +130,30 @@ class Network(nn.Module):
 
         return q_val
 
-    def step(self, obs, pos, hidden=None):
+    def step(self, obs, pos):
         
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
         latent = latent.unsqueeze(1)
-        if hidden is None:
-            _, hidden = self.recurrent(latent)
+        if self.hidden is None:
+            _, self.hidden = self.recurrent(latent)
         else:
-            _, hidden = self.recurrent(latent, hidden)
-        hidden = torch.squeeze(hidden)
-        adv_val = self.adv(hidden)
-        state_val = self.state(hidden)
+            _, self.hidden = self.recurrent(latent, self.hidden)
+        self.hidden = torch.squeeze(self.hidden)
+
+        adv_val = self.adv(self.hidden)
+        state_val = self.state(self.hidden)
 
         q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
-        return q_val, hidden.unsqueeze(0)
+        self.hidden = self.hidden.unsqueeze(0)
+
+        return q_val
+
+    def reset(self):
+        self.hidden = None
 
     def bootstrap(self, obs, pos, steps):
         batch_size = obs.size(0)

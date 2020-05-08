@@ -118,7 +118,6 @@ def _generate(env, qnet,
 
     obs_pos = env.reset()
     done = False
-    hidden = None
 
     # if use imitation learning
     imitation = True if random.random() < imitation_ratio else False
@@ -141,7 +140,7 @@ def _generate(env, qnet,
             # sample action
             with torch.no_grad():
 
-                q_val, hidden = qnet.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device), hidden)
+                q_val = qnet.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
 
                 actions = q_val.argmax(1).cpu().tolist()
 
@@ -165,7 +164,7 @@ def _generate(env, qnet,
         else:
             obs_pos = env.reset()
             done = False
-            hidden = None
+            qnet.reset()
 
             imitation = True if random.random() < imitation_ratio else False
             imitation_actions = find_path(env)
