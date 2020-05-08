@@ -390,8 +390,8 @@ class Environment:
 
         for i in range(self.num_agents):
             x, y = self.agents_pos[i]
-            pos[i][0:2] = self.agents_pos[i]
-            pos[i][2:4] = self.goals_pos[i]
+            pos[i][0:2] = self.agents_pos[i].astype(np.float32)
+            pos[i][2:4] = self.goals_pos[i].astype(np.float32)
 
             obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 

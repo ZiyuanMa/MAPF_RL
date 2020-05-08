@@ -53,19 +53,19 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
 
         # update qnet
         if n_iter > learning_starts and n_iter % train_freq == 0:
-            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, *extra = buffer.sample(batch_size)
+            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, *extra = buffer.sample(batch_size)
 
 
             with torch.no_grad():
                 # choose max q index from next observation
                 # double q-learning
-                b_action_ = qnet(b_next_obs, b_next_pos).argmax(2).unsqueeze(2)
-                b_q_ = (1 - b_done) * tar_qnet(b_next_obs, b_next_pos).gather(2, b_action_)
+                b_action_ = qnet.bootstrap(b_next_obs, b_next_pos, b_bt_steps).argmax(1, keepdim=True)
+                b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_bt_steps).gather(1, b_action_)
 
 
-            b_q = qnet(b_obs, b_pos).gather(2, b_action)
+            b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
 
-            abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs().mean(1)
+            abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs().reshape(32, 2).mean(dim=1, keepdim=True)
 
             priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
 
@@ -118,6 +118,7 @@ def _generate(env, qnet,
 
     obs_pos = env.reset()
     done = False
+    hidden = None
 
     # if use imitation learning
     imitation = True if random.random() < imitation_ratio else False
@@ -140,7 +141,7 @@ def _generate(env, qnet,
             # sample action
             with torch.no_grad():
 
-                q_val = qnet(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
+                q_val, hidden = qnet.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device), hidden)
 
                 actions = q_val.argmax(1).cpu().tolist()
 
@@ -164,6 +165,7 @@ def _generate(env, qnet,
         else:
             obs_pos = env.reset()
             done = False
+            hidden = None
 
             imitation = True if random.random() < imitation_ratio else False
             imitation_actions = find_path(env)

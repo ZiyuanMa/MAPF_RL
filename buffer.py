@@ -184,7 +184,7 @@ class ReplayBuffer(object):
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
     def _encode_sample(self, idxes):
-        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps = [], [], [], [], [], [], [], []
+        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps = [], [], [], [], [], [], [], [], []
 
 
         for i in idxes:
@@ -214,8 +214,8 @@ class ReplayBuffer(object):
 
             if bt_steps < config.bt_steps:
                 pad_len = config.bt_steps-bt_steps
-                pad_obs = [ np.empty((2,9,9), dtype=np.float32) for _ in range(pad_len) ]
-                pad_pos = [ np.empty((4), dtype=np.float32) for _ in range(pad_len) ]
+                pad_obs = [ np.zeros((2,9,9), dtype=np.float32) for _ in range(pad_len) ]
+                pad_pos = [ np.zeros((4), dtype=np.float32) for _ in range(pad_len) ]
                 for agent_id in range(num_agents):
                     obs[agent_id] += pad_obs
                     pos[agent_id] += pad_pos
@@ -239,23 +239,26 @@ class ReplayBuffer(object):
                         break
 
             b_obs.append(np.array(obs))
-            b_pos.append(pos)
-            b_action.append(action)
-            b_reward.append(sum_reward)
+            b_pos.append(np.array(pos))
+            b_action += action
+            b_reward += sum_reward.tolist()
             b_next_obs.append(next_obs)
             b_next_pos.append(next_pos)
-            b_done.append(done)
-            b_steps.append(forward)
+            b_done+=[done for _ in range(num_agents)]
+            b_steps+=[forward for _ in range(num_agents)]
+            b_bt_steps+=[bt_steps+1 for _ in range(num_agents)]
+
 
         res = (
             torch.from_numpy(np.concatenate(b_obs)).to(self._device),
             torch.from_numpy(np.concatenate(b_pos)).to(self._device),
-            torch.LongTensor(b_action).unsqueeze(2).to(self._device),
-            torch.FloatTensor(b_reward).unsqueeze(2).to(self._device),
+            torch.LongTensor(b_action).unsqueeze(1).to(self._device),
+            torch.FloatTensor(b_reward).unsqueeze(1).to(self._device),
             torch.from_numpy(np.concatenate(b_next_obs)).to(self._device),
             torch.from_numpy(np.concatenate(b_next_pos)).to(self._device),
-            torch.FloatTensor(b_done).unsqueeze(1).unsqueeze(2).to(self._device),
-            torch.FloatTensor(b_steps).unsqueeze(1).unsqueeze(2).to(self._device),
+            torch.FloatTensor(b_done).unsqueeze(1).to(self._device),
+            torch.FloatTensor(b_steps).unsqueeze(1).to(self._device),
+            torch.LongTensor(b_bt_steps).to(self._device),
         ) 
 
         return res
@@ -343,7 +346,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Update priorities of sampled transitions"""
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
-            assert (priority > 0).all()
+            assert (priority > 0).all(), priority
             assert 0 <= idx < len(self._storage)
             self._it_sum[idx] = priority ** self._alpha
             self._it_min[idx] = priority ** self._alpha
