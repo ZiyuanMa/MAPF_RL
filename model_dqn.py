@@ -59,6 +59,9 @@ class Network(nn.Module):
 
         super().__init__()
 
+        self.obs_dim = obs_dim
+        self.pos_dim = pos_dim
+
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
@@ -82,10 +85,10 @@ class Network(nn.Module):
 
         self.concat_encoder = nn.Sequential(
             ResBlock(obs_latent_dim+pos_latent_dim), 
-            ResBlock(obs_latent_dim+pos_latent_dim),
+            # ResBlock(obs_latent_dim+pos_latent_dim),
         )
 
-        # self.recurrent = nn.GRUCell(latent_dim, latent_dim)
+        self.recurrent = nn.GRU(obs_latent_dim+pos_latent_dim, obs_latent_dim+pos_latent_dim, batch_first=True)
 
         # dueling q structure
         self.adv = nn.Linear(obs_latent_dim+pos_latent_dim, 5)
@@ -101,8 +104,8 @@ class Network(nn.Module):
 
         if obs.dim() == 5:
             batch_size = obs.size(0)
-            obs = obs.view(-1, 2, 9, 9)
-            pos = pos.view(-1, 4)
+            obs = obs.view(-1, self.obs_dim, 9, 9)
+            pos = pos.view(-1, self.pos_dim)
         else:
             batch_size = 1
 
@@ -120,3 +123,13 @@ class Network(nn.Module):
             q_val = q_val.view(batch_size, -1, 5)
 
         return q_val
+
+    def bootstrap(self, obs, pos):
+        if obs.dim() == 5:
+            batch_size = obs.size(0)
+            obs = obs.view(-1, self.obs_dim, 9, 9)
+            pos = pos.view(-1, self.pos_dim)
+        else:
+            batch_size = 1
+
+        

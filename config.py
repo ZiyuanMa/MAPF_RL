@@ -26,6 +26,7 @@ target_network_update_freq=4000
 buffer_size=50000
 save_path='./models'
 max_steps = 200
+bt_steps = 31
 
 # gradient norm clipping
 grad_norm_dqn=10

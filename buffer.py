@@ -10,6 +10,7 @@ import random
 import numpy as np
 import torch
 
+import config
 
 class SegmentTree(object):
     def __init__(self, capacity, operation, neutral_element):
@@ -189,12 +190,44 @@ class ReplayBuffer(object):
         for i in idxes:
             obs_pos, action, reward, next_obs_pos, done, imitation, info = self._storage[i]
 
+            bt_steps = min(info['step'], config.bt_steps)
+            num_agents = obs_pos[1].shape[0]
+            obs = [ [obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
+            pos = [ [obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
+            next_obs = [ [next_obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
+            next_pos = [ [next_obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
+
+            for step in range(bt_steps):
+                bt_obs_pos, _, _, bt_next_obs_pos, _, _, _ = self._storage[(i-step-1)%self._maxsize]
+                for agent_id in range(num_agents):
+                    obs[agent_id].append(bt_obs_pos[0][agent_id])
+                    pos[agent_id].append(bt_obs_pos[1][agent_id])
+                    next_obs[agent_id].append(bt_next_obs_pos[0][agent_id])
+                    next_pos[agent_id].append(bt_next_obs_pos[1][agent_id])
+
+            # reverse sequence of states
+            for agent_id in range(num_agents):
+                obs[agent_id].reverse()
+                pos[agent_id].reverse()
+                next_obs[agent_id].reverse()
+                next_pos[agent_id].reverse()
+
+            if bt_steps < config.bt_steps:
+                pad_len = config.bt_steps-bt_steps
+                pad_obs = [ np.empty((2,9,9), dtype=np.float32) for _ in range(pad_len) ]
+                pad_pos = [ np.empty((4), dtype=np.float32) for _ in range(pad_len) ]
+                for agent_id in range(num_agents):
+                    obs[agent_id] += pad_obs
+                    pos[agent_id] += pad_pos
+                    next_obs[agent_id] += pad_obs
+                    next_pos[agent_id] += pad_pos
+
             forward = 1
             sum_reward = np.array(reward, dtype=np.float32)
 
             # use Monte Carlo method if it's imitation
             if imitation:
-                for j in range(1, 200):
+                for j in range(1, config.max_steps):
                     next_idx = (i+j) % self._maxsize
                     if next_idx != self._next_idx and not done:
                         _, _, next_reward, next_obs_pos, done, imitation, info = self._storage[next_idx]
@@ -205,22 +238,22 @@ class ReplayBuffer(object):
                     else:
                         break
 
-            b_obs.append(obs_pos[0])
-            b_pos.append(obs_pos[1])
+            b_obs.append(np.array(obs))
+            b_pos.append(pos)
             b_action.append(action)
             b_reward.append(sum_reward)
-            b_next_obs.append(next_obs_pos[0])
-            b_next_pos.append(next_obs_pos[1])
+            b_next_obs.append(next_obs)
+            b_next_pos.append(next_pos)
             b_done.append(done)
             b_steps.append(forward)
 
         res = (
-            torch.from_numpy(np.stack(b_obs)).to(self._device),
-            torch.from_numpy(np.stack(b_pos)).to(self._device),
+            torch.from_numpy(np.concatenate(b_obs)).to(self._device),
+            torch.from_numpy(np.concatenate(b_pos)).to(self._device),
             torch.LongTensor(b_action).unsqueeze(2).to(self._device),
             torch.FloatTensor(b_reward).unsqueeze(2).to(self._device),
-            torch.from_numpy(np.stack(b_next_obs)).to(self._device),
-            torch.from_numpy(np.stack(b_next_pos)).to(self._device),
+            torch.from_numpy(np.concatenate(b_next_obs)).to(self._device),
+            torch.from_numpy(np.concatenate(b_next_pos)).to(self._device),
             torch.FloatTensor(b_done).unsqueeze(1).unsqueeze(2).to(self._device),
             torch.FloatTensor(b_steps).unsqueeze(1).unsqueeze(2).to(self._device),
         ) 
