@@ -31,11 +31,22 @@ import config
 #         return out
 
 class ResBlock(nn.Module):
-    def __init__(self, channel, type='linear'):
+    def __init__(self, channel, type='linear', bn=False):
         super().__init__()
         if type == 'cnn':
-            self.block1 = nn.Conv2d(channel, channel, 3, 1, 1)
-            self.block2 = nn.Conv2d(channel, channel, 3, 1, 1)
+            if bn:
+                self.block1 = nn.Sequential(
+                    nn.Conv2d(channel, channel, 3, 1, 1, bias=False),
+                    nn.BatchNorm2d(channel)
+                )
+                self.block2 = nn.Sequential(
+                    nn.Conv2d(channel, channel, 3, 1, 1, bias=False),
+                    nn.BatchNorm2d(channel)
+                )
+            else:
+                self.block1 = nn.Conv2d(channel, channel, 3, 1, 1)
+                self.block2 = nn.Conv2d(channel, channel, 3, 1, 1)
+
         elif type == 'linear':
             self.block1 = nn.Linear(channel, channel)
             self.block2 = nn.Linear(channel, channel)
@@ -68,14 +79,22 @@ class Network(nn.Module):
         self.latent_dim = obs_latent_dim + pos_latent_dim
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
+            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(cnn_channel),
             nn.ReLU(True),
-            ResBlock(cnn_channel, type='cnn'),
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
+
+            ResBlock(cnn_channel, type='cnn', bn=True),
+
+            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(cnn_channel),
             nn.ReLU(True),
-            nn.Conv2d(cnn_channel, 4, 1, 1),
+
+            nn.Conv2d(cnn_channel, 4, 1, 1, bias=False),
+            nn.BatchNorm2d(4),
             nn.ReLU(True),
+
             nn.Flatten(),
+
             nn.Linear(4*9*9, obs_latent_dim),
             nn.ReLU(True),
         )
@@ -101,9 +120,11 @@ class Network(nn.Module):
         self.hidden = None
 
         for _, m in self.named_modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+            if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
 
     def forward(self, obs, pos):
 

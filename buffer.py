@@ -9,6 +9,7 @@ import random
 
 import numpy as np
 import torch
+import math
 
 import config
 
@@ -160,6 +161,18 @@ class MinSegmentTree(SegmentTree):
 
         return super(MinSegmentTree, self).reduce(start, end)
 
+class SumTree:
+    def __init__(self, capacity):
+
+        layer = 1
+        while (layer-1)**2 < capacity:
+            layer += 1
+        assert layer**2 -1 == capacity, 'buffer size only support power of 2 size'
+        self.tree = np.zeros(layer**2-1)
+        self.capacity = capacity
+        self.size = 0
+        self.ptr = (layer-1)**2-1
+
 
 class ReplayBuffer(object):
     def __init__(self, size, device):
@@ -235,12 +248,12 @@ class ReplayBuffer(object):
 
 
             next_bt_steps = min(bt_steps+forward-1, config.bt_steps)
-            start = (i+forward-1)%self._maxsize
+            next_i = (i+forward-1)%self._maxsize
             next_obs = [ [] for agent_id in range(num_agents) ]
             next_pos = [ [] for agent_id in range(num_agents) ]
 
             for step in range(next_bt_steps):
-                _, _, _, bt_next_obs_pos, _, _, _ = self._storage[(start-step)%self._maxsize]
+                _, _, _, bt_next_obs_pos, _, _, _ = self._storage[(next_i-step)%self._maxsize]
                 for agent_id in range(num_agents):
 
                     next_obs[agent_id].append(bt_next_obs_pos[0][agent_id])
@@ -372,7 +385,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Update priorities of sampled transitions"""
         assert len(idxes) == len(priorities)
         for idx, priority in zip(idxes, priorities):
-            assert (priority > 0).all(), priority
+            assert (priority > 0).all()
             assert 0 <= idx < len(self._storage)
             self._it_sum[idx] = priority ** self._alpha
             self._it_min[idx] = priority ** self._alpha

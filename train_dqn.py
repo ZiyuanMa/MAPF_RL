@@ -32,7 +32,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
     # create network
     qnet = Network().to(device)
 
-    optimizer = Adam(qnet.parameters(), lr=2.5e-4)
+    optimizer = Adam(qnet.parameters(), lr=5e-4)
     scheduler = lr_scheduler.StepLR(optimizer, 200000, gamma=0.5)
 
     # create target network
@@ -65,14 +65,11 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
 
             b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
 
-            abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs().reshape(32, 2).mean(dim=1, keepdim=True)
+            abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs().reshape(batch_size, config.num_agents).mean(dim=1, keepdim=True)
 
             priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
 
-            if extra:
-                loss = (extra[0] * huber_loss(abs_td_error)).mean()
-            else:
-                loss = huber_loss(abs_td_error).mean()
+            loss = (extra[0] * huber_loss(abs_td_error)).mean()
 
             optimizer.zero_grad()
 
