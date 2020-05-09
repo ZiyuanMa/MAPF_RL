@@ -12,6 +12,9 @@ import torch
 
 import config
 
+obs_pad = np.zeros((config.obs_dim, 9, 9), dtype=config.dtype)
+pos_pad = np.zeros((config.pos_dim), dtype=config.dtype)
+
 class SegmentTree(object):
     def __init__(self, capacity, operation, neutral_element):
         """Build a Segment Tree data structure.
@@ -184,43 +187,35 @@ class ReplayBuffer(object):
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
     def _encode_sample(self, idxes):
-        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps = [], [], [], [], [], [], [], [], []
+        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
 
 
         for i in idxes:
             obs_pos, action, reward, next_obs_pos, done, imitation, info = self._storage[i]
 
-            bt_steps = min(info['step'], config.bt_steps)
+            bt_steps = min(info['step']+1, config.bt_steps)
             num_agents = obs_pos[1].shape[0]
-            obs = [ [obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
-            pos = [ [obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
-            next_obs = [ [next_obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
-            next_pos = [ [next_obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
+            obs = [ [] for agent_id in range(num_agents) ]
+            pos = [ [] for agent_id in range(num_agents) ]
 
             for step in range(bt_steps):
-                bt_obs_pos, _, _, bt_next_obs_pos, _, _, _ = self._storage[(i-step-1)%self._maxsize]
+                bt_obs_pos, _, _, _, _, _, _ = self._storage[(i-step)%self._maxsize]
                 for agent_id in range(num_agents):
                     obs[agent_id].append(bt_obs_pos[0][agent_id])
                     pos[agent_id].append(bt_obs_pos[1][agent_id])
-                    next_obs[agent_id].append(bt_next_obs_pos[0][agent_id])
-                    next_pos[agent_id].append(bt_next_obs_pos[1][agent_id])
 
             # reverse sequence of states
             for agent_id in range(num_agents):
                 obs[agent_id].reverse()
                 pos[agent_id].reverse()
-                next_obs[agent_id].reverse()
-                next_pos[agent_id].reverse()
 
             if bt_steps < config.bt_steps:
                 pad_len = config.bt_steps-bt_steps
-                pad_obs = [ np.zeros((2,9,9), dtype=np.float32) for _ in range(pad_len) ]
-                pad_pos = [ np.zeros((4), dtype=np.float32) for _ in range(pad_len) ]
+                pad_obs = [ obs_pad for _ in range(pad_len) ]
+                pad_pos = [ pos_pad for _ in range(pad_len) ]
                 for agent_id in range(num_agents):
                     obs[agent_id] += pad_obs
                     pos[agent_id] += pad_pos
-                    next_obs[agent_id] += pad_obs
-                    next_pos[agent_id] += pad_pos
 
             forward = 1
             sum_reward = np.array(reward, dtype=np.float32)
@@ -232,21 +227,51 @@ class ReplayBuffer(object):
                     if next_idx != self._next_idx and not done:
                         _, _, next_reward, next_obs_pos, done, imitation, info = self._storage[next_idx]
 
-                        sum_reward += np.array(next_reward, dtype=np.float32) * 0.99 ** j
+                        sum_reward += np.array(next_reward, dtype=np.float32) * (0.99 ** j)
                         forward += 1
 
                     else:
                         break
 
-            b_obs.append(np.array(obs))
-            b_pos.append(np.array(pos))
+
+            next_bt_steps = min(bt_steps+forward-1, config.bt_steps)
+            start = (i+forward-1)%self._maxsize
+            next_obs = [ [] for agent_id in range(num_agents) ]
+            next_pos = [ [] for agent_id in range(num_agents) ]
+
+            for step in range(next_bt_steps):
+                _, _, _, bt_next_obs_pos, _, _, _ = self._storage[(start-step)%self._maxsize]
+                for agent_id in range(num_agents):
+
+                    next_obs[agent_id].append(bt_next_obs_pos[0][agent_id])
+                    next_pos[agent_id].append(bt_next_obs_pos[1][agent_id])
+
+            for agent_id in range(num_agents):
+                next_obs[agent_id].reverse()
+                next_pos[agent_id].reverse()
+
+            if next_bt_steps < config.bt_steps:
+                pad_len = config.bt_steps-next_bt_steps
+                pad_obs = [ obs_pad for _ in range(pad_len) ]
+                pad_pos = [ pos_pad for _ in range(pad_len) ]
+                for agent_id in range(num_agents):
+                    next_obs[agent_id] += pad_obs
+                    next_pos[agent_id] += pad_pos
+
+
+
+
+            b_obs.append(obs)
+            b_pos.append(pos)
             b_action += action
             b_reward += sum_reward.tolist()
             b_next_obs.append(next_obs)
             b_next_pos.append(next_pos)
-            b_done+=[done for _ in range(num_agents)]
-            b_steps+=[forward for _ in range(num_agents)]
-            b_bt_steps+=[bt_steps+1 for _ in range(num_agents)]
+
+            b_done += [ done for _ in range(num_agents) ]
+            b_steps += [ forward for _ in range(num_agents) ]
+            b_bt_steps += [ bt_steps for _ in range(num_agents) ]
+            b_next_bt_steps += [ next_bt_steps for _ in range(num_agents) ]
 
 
         res = (
@@ -259,6 +284,7 @@ class ReplayBuffer(object):
             torch.FloatTensor(b_done).unsqueeze(1).to(self._device),
             torch.FloatTensor(b_steps).unsqueeze(1).to(self._device),
             torch.LongTensor(b_bt_steps).to(self._device),
+            torch.LongTensor(b_next_bt_steps).to(self._device),
         ) 
 
         return res
