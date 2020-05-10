@@ -173,10 +173,8 @@ class SumTree:
         self.ptr = capacity-1
 
     def sum(self):
-        if self.size < self.capacity:
-            return np.sum(self.tree[-self.capacity:-self.capacity+self.size])
-        else:
-            return np.sum(self.tree[-self.capacity:])
+
+        return self.tree[0]
 
     def min(self):
         if self.size < self.capacity:
@@ -383,7 +381,7 @@ class ReplayBuffer:
     
     def step(self):
         self.counter += 1
-        if self.counter == 200:
+        if self.counter == 200000:
             self.counter = 0
             self.n_step += 1
 

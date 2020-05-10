@@ -34,7 +34,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
     # create network
     qnet = Network().to(device)
 
-    optimizer = Adam(qnet.parameters(), lr=5e-4)
+    optimizer = Adam(qnet.parameters(), lr=2.5e-4)
     # scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
     # scaler = amp.GradScaler()
 
@@ -94,14 +94,14 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             # scheduler.step()
 
             # soft update
-            # for tar_net, net in zip(tar_qnet.parameters(), qnet.parameters()):
-            #     tar_net.data.copy_(0.001*net.data + 0.999*tar_net.data)
+            for tar_net, net in zip(tar_qnet.parameters(), qnet.parameters()):
+                tar_net.data.copy_(0.005*net.data + 0.995*tar_net.data)
 
             buffer.update_priorities(extra[1], priorities)
 
         # update target net and log
         if n_iter % target_network_update_freq == 0:
-            tar_qnet.load_state_dict(qnet.state_dict())
+            # tar_qnet.load_state_dict(qnet.state_dict())
 
             print('{} Iter {} {}'.format('=' * 10, n_iter, '=' * 10))
             fps = int(target_network_update_freq / (time.time() - start_ts))
