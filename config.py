@@ -16,14 +16,14 @@ reward_fn = dict(move=-0.075,
 ############################################################
 
 # basic training setting
-training_timesteps = 2400000
+training_timesteps = 2000000
 save_interval=50000
 gamma=0.99
 batch_size_dqn=32
 train_freq=4
-learning_starts=10000
+learning_starts=50000
 target_network_update_freq=2500
-buffer_size=32768
+buffer_size=65536
 save_path='./models'
 max_steps = 200
 bt_steps = 32

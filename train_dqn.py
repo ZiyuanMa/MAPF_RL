@@ -95,7 +95,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
 
             # soft update
             for tar_net, net in zip(tar_qnet.parameters(), qnet.parameters()):
-                tar_net.data.copy_(0.005*net.data + 0.995*tar_net.data)
+                tar_net.data.copy_(0.001*net.data + 0.999*tar_net.data)
 
             buffer.update_priorities(extra[1], priorities)
 
@@ -108,7 +108,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             start_ts = time.time()
             print('FPS {}'.format(fps))
 
-            if n_iter > learning_starts and n_iter % train_freq == 0:
+            if n_iter > learning_starts == 0:
                 print('vloss: {:.6f}'.format(loss.item()))
             
         # save model

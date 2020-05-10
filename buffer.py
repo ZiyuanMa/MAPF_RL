@@ -275,12 +275,13 @@ class ReplayBuffer:
                 for j in range(1, self.n_step):
                     next_idx = (i+j) % self._maxsize
                     if next_idx != self._next_idx and not done:
-                        _, _, next_reward, _, done, _, next_info = self._storage[next_idx]
+                        _, _, next_reward, _, next_done, _, next_info = self._storage[next_idx]
 
                         if next_info['step'] == 0:
                             break
 
                         sum_reward += np.array(next_reward, dtype=np.float32) * (0.99 ** j)
+                        done = next_done
                         forward += 1
 
                     else:
@@ -312,18 +313,17 @@ class ReplayBuffer:
                     obs[agent_id] += pad_obs
                     pos[agent_id] += pad_pos
 
-            
 
             # next obs_pos
-            next_bt_steps = min(bt_steps+forward-1, config.bt_steps)
+            next_bt_steps = min(bt_steps+forward, config.bt_steps)
             next_i = (i+forward-1)%self._maxsize
 
             _, _, _, bt_next_obs_pos, _, _, _ = self._storage[next_i]
             for agent_id in range(num_agents):
-                    next_obs = [ [bt_next_obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
-                    next_pos = [ [bt_next_obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
+                next_obs = [ [bt_next_obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
+                next_pos = [ [bt_next_obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
 
-            for step in range(next_bt_steps):
+            for step in range(next_bt_steps-1):
                 bt_next_obs_pos, _, _, _, _, _, _ = self._storage[(next_i-step)%self._maxsize]
                 for agent_id in range(num_agents):
                     next_obs[agent_id].append(bt_next_obs_pos[0][agent_id])
@@ -381,7 +381,7 @@ class ReplayBuffer:
     
     def step(self):
         self.counter += 1
-        if self.counter == 200000:
+        if self.counter == 150000:
             self.counter = 0
             self.n_step += 1
 
@@ -522,6 +522,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         encoded_sample = self._encode_sample(idxes)
 
         super().step()
+
         return encoded_sample + (weights, idxes)
 
     def update_priorities(self, idxes, priorities):
