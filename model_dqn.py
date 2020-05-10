@@ -111,11 +111,11 @@ class Network(nn.Module):
             # ResBlock(self.latent_dim),
         )
 
-        self.recurrent = nn.GRU(self.latent_dim, self.latent_dim*2, batch_first=True)
+        self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
 
         # dueling q structure
-        self.adv = nn.Linear(self.latent_dim*2, 5)
-        self.state = nn.Linear(self.latent_dim*2, 1)
+        self.adv = nn.Linear(self.latent_dim, 5)
+        self.state = nn.Linear(self.latent_dim, 1)
 
         self.hidden = None
 

@@ -252,8 +252,7 @@ class ReplayBuffer:
 
     def _encode_sample(self, idxes):
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
-
-
+        
         for i in idxes:
             obs_pos, action, reward, next_obs_pos, done, imitation, info = self._storage[i]
 
@@ -278,9 +277,9 @@ class ReplayBuffer:
                 for j in range(1, self.n_step):
                     next_idx = (i+j) % self._maxsize
                     if next_idx != self._next_idx and not done:
-                        _, _, next_reward, _, done, _, info = self._storage[next_idx]
+                        _, _, next_reward, _, done, _, next_info = self._storage[next_idx]
 
-                        if info['step'] == 0:
+                        if next_info['step'] == 0:
                             break
 
                         sum_reward += np.array(next_reward, dtype=np.float32) * (0.99 ** j)
@@ -357,11 +356,6 @@ class ReplayBuffer:
             b_next_bt_steps += [ next_bt_steps for _ in range(num_agents) ]
 
 
-        self.counter += 1
-        if self.counter == 125000:
-            self.counter = 0
-            self.n_step += 1
-
         res = (
             torch.from_numpy(np.concatenate(b_obs)).to(self._device),
             torch.from_numpy(np.concatenate(b_pos)).to(self._device),
@@ -383,13 +377,15 @@ class ReplayBuffer:
         idxes = []
         for _ in range(batch_size):
             idx = random.choice(indexes)
-            _, _, _, _, _, _, info = self._storage[idx]
-            while info['step'] == 0:
-                idx = random.choice(indexes)
-                _, _, _, _, _, _, info = self._storage[idx]
             idxes.append(idx)
 
         return self._encode_sample(idxes)
+    
+    def step(self):
+        self.counter += 1
+        if self.counter == 200:
+            self.counter = 0
+            self.n_step += 1
 
 
 # class PrioritizedReplayBuffer(ReplayBuffer):
@@ -526,6 +522,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = torch.from_numpy(weights.astype('float32'))
         weights = weights.unsqueeze(1).to(self._device)
         encoded_sample = self._encode_sample(idxes)
+
+        super().step()
         return encoded_sample + (weights, idxes)
 
     def update_priorities(self, idxes, priorities):

@@ -34,8 +34,8 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
     # create network
     qnet = Network().to(device)
 
-    optimizer = Adam(qnet.parameters(), lr=8e-4)
-    scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
+    optimizer = Adam(qnet.parameters(), lr=5e-4)
+    # scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
     # scaler = amp.GradScaler()
 
     # create target network
@@ -91,7 +91,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             # scaler.step(optimizer)
             # scaler.update()
 
-            scheduler.step()
+            # scheduler.step()
 
             # soft update
             # for tar_net, net in zip(tar_qnet.parameters(), qnet.parameters()):
