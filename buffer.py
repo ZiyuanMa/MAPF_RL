@@ -164,26 +164,35 @@ class SumTree:
     def __init__(self, capacity):
 
         layer = 1
-        while (layer-1)**2 < capacity:
+        while 2**(layer-1) < capacity:
             layer += 1
-        assert layer**2 -1 == capacity, 'buffer size only support power of 2 size'
-        self.tree = np.zeros(layer**2-1)
+        assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
+        self.tree = np.zeros(2**layer-1)
         self.capacity = capacity
         self.size = 0
         self.ptr = capacity-1
 
     def sum(self):
-
-        return np.sum(self.tree[-self.capacity:])
+        if self.size < self.capacity:
+            return np.sum(self.tree[-self.capacity:-self.capacity+self.size])
+        else:
+            np.sum(self.tree[-self.capacity:])
 
     def min(self):
-
-        return np.min(self.tree[-self.capacity:])
+        if self.size < self.capacity:
+            return np.min(self.tree[-self.capacity:-self.capacity+self.size])
+        else:
+            return np.min(self.tree[-self.capacity:])
 
     def __setitem__(self, idx, val):
-        idx += self.capacity-1
-        self.tree[idx] = val
 
+        assert val != 0, 'val is 0'
+        idx += self.capacity-1
+        if self.tree[idx] == 0:
+            self.size += 1
+
+        self.tree[idx] = val
+        
         idx = (idx-1) // 2
         while idx >= 0:
             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
@@ -202,7 +211,7 @@ class SumTree:
         
         assert 0 <= prefixsum <= self.sum() + 1e-5
 
-        idx = 1
+        idx = 0
         while idx < self.capacity-1:  # while non-leaf
             if self.tree[2*idx + 1] > prefixsum:
                 idx = 2*idx + 1
@@ -309,7 +318,7 @@ class ReplayBuffer:
             
 
             # next obs_pos
-            next_bt_steps = min(bt_steps+forward, config.bt_steps)
+            next_bt_steps = min(bt_steps+forward-1, config.bt_steps)
             next_i = (i+forward-1)%self._maxsize
 
             _, _, _, bt_next_obs_pos, _, _, _ = self._storage[next_i]
@@ -511,7 +520,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         idxes = self._sample_proportional(batch_size)
 
         min_p = self.priority_tree.min()
-
+        
         samples_p = np.asarray([self.priority_tree[idx] for idx in idxes])
         weights = np.power(samples_p/min_p, -self.beta)
         weights = torch.from_numpy(weights.astype('float32'))
