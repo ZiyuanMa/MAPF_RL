@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam, lr_scheduler
+# from torch.cuda import amp
 import os
 import random
 import time
@@ -27,13 +28,15 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             batch_size=config.batch_size_dqn, train_freq=config.train_freq,
             learning_starts=config.learning_starts, target_network_update_freq=config.target_network_update_freq,
             buffer_size=config.buffer_size, max_steps=config.max_steps, imitation_ratio=config.imitation_ratio,
-            prioritized_replay_alpha=config.prioritized_replay_alpha, prioritized_replay_beta=config.prioritized_replay_beta):
+            prioritized_replay_alpha=config.prioritized_replay_alpha, prioritized_replay_beta=config.prioritized_replay_beta,
+            double_q=config.double_q):
 
     # create network
     qnet = Network().to(device)
 
-    optimizer = Adam(qnet.parameters(), lr=5e-4)
-    scheduler = lr_scheduler.StepLR(optimizer, 200000, gamma=0.5)
+    optimizer = Adam(qnet.parameters(), lr=8e-4)
+    scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
+    # scaler = amp.GradScaler()
 
     # create target network
     tar_qnet = deepcopy(qnet)
@@ -59,8 +62,12 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             with torch.no_grad():
                 # choose max q index from next observation
                 # double q-learning
-                b_action_ = qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).argmax(1, keepdim=True)
-                b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).gather(1, b_action_)
+                if double_q:
+                    b_action_ = qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).argmax(1, keepdim=True)
+                    b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).gather(1, b_action_)
+                else:
+
+                    b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).max(1, keepdim=True)[0]
 
 
             b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
@@ -74,10 +81,15 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             optimizer.zero_grad()
 
             loss.backward()
+            # scaler.scale(loss).backward()
+
             if grad_norm is not None:
+                # scaler.unscale_(optimizer)
                 nn.utils.clip_grad_norm_(qnet.parameters(), grad_norm)
 
             optimizer.step()
+            # scaler.step(optimizer)
+            # scaler.update()
 
             scheduler.step()
 

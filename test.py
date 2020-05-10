@@ -51,7 +51,7 @@ def test_model(num_agents):
 
 
     network = Network()
-    state_dict = torch.load('./models/400000.pth')
+    state_dict = torch.load('./models/1350000.pth')
     network.load_state_dict(state_dict)
     network.eval()
     network.to(device)
@@ -69,7 +69,7 @@ def test_model(num_agents):
 
 
         env = Environment()
-        case = 1
+        case = 86
         show = False
         show_steps = 20
         fail = 0

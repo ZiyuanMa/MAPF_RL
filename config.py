@@ -26,7 +26,7 @@ target_network_update_freq=2000
 buffer_size=32768
 save_path='./models'
 max_steps = 200
-bt_steps = 16
+bt_steps = 32
 dtype = 'float32'
 
 # gradient norm clipping
@@ -34,11 +34,14 @@ grad_norm_dqn=10
 
 # epsilon greedy
 explore_start_eps = 1.0
-explore_final_eps = 0.1
+explore_final_eps = 0.05
 
 # prioritized replay
 prioritized_replay_alpha=0.6
 prioritized_replay_beta=0.4
+
+# use double q learning
+double_q = False
 
 # imitation learning
 imitation_ratio = 0.4
