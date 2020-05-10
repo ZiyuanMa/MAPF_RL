@@ -176,7 +176,7 @@ class SumTree:
         if self.size < self.capacity:
             return np.sum(self.tree[-self.capacity:-self.capacity+self.size])
         else:
-            np.sum(self.tree[-self.capacity:])
+            return np.sum(self.tree[-self.capacity:])
 
     def min(self):
         if self.size < self.capacity:
