@@ -194,3 +194,27 @@ def huber_loss(abs_td_error):
 if __name__ == '__main__':
 
     learn()
+
+# see Appendix C of `https://arxiv.org/abs/1706.01905`
+# q_dict = deepcopy(qnet.state_dict())
+# for _, m in qnet.named_modules():
+#     if isinstance(m, nn.Linear):
+#         std = torch.empty_like(m.weight).fill_(noise_scale)
+#         m.weight.data.add_(torch.normal(0, std).to(device))
+#         std = torch.empty_like(m.bias).fill_(noise_scale)
+#         m.bias.data.add_(torch.normal(0, std).to(device))
+# q_perturb = qnet(ob)
+# if atom_num > 1:
+#     q_perturb = (q_perturb.exp() * vrange).sum(2)
+# kl_perturb = ((log_softmax(q, 1) - log_softmax(q_perturb, 1)) *
+#             softmax(q, 1)).sum(-1).mean()
+# kl_explore = -math.log(1 - epsilon + epsilon / action_dim)
+# if kl_perturb < kl_explore:
+#     noise_scale *= 1.01
+# else:
+#     noise_scale /= 1.01
+# qnet.load_state_dict(q_dict)
+# if random.random() < epsilon:
+#     a = int(random.random() * action_dim)
+# else:
+#     a = q_perturb.argmax(1).cpu().numpy()[0]
