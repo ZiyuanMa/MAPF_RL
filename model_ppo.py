@@ -31,20 +31,35 @@ from torch.distributions.categorical import Categorical
 #         return out
 
 class ResBlock(nn.Module):
-    def __init__(self, channel):
+    def __init__(self, channel, type='linear', bn=False):
         super().__init__()
+        if type == 'cnn':
+            if bn:
+                self.block1 = nn.Sequential(
+                    nn.Conv2d(channel, channel, 3, 1, 1, bias=False),
+                    nn.BatchNorm2d(channel)
+                )
+                self.block2 = nn.Sequential(
+                    nn.Conv2d(channel, channel, 3, 1, 1, bias=False),
+                    nn.BatchNorm2d(channel)
+                )
+            else:
+                self.block1 = nn.Conv2d(channel, channel, 3, 1, 1)
+                self.block2 = nn.Conv2d(channel, channel, 3, 1, 1)
 
-        self.linear1 = nn.Linear(channel, channel)
-
-        self.linear2 = nn.Linear(channel, channel)
+        elif type == 'linear':
+            self.block1 = nn.Linear(channel, channel)
+            self.block2 = nn.Linear(channel, channel)
+        else:
+            raise RuntimeError('type does not support')
 
     def forward(self, x):
         identity = x
 
-        x = self.linear1(x)
+        x = self.block1(x)
         x = F.relu(x)
 
-        x = self.linear2(x)
+        x = self.block2(x)
 
         x += identity
 

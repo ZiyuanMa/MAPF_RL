@@ -21,7 +21,7 @@ random.seed(0)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def learn(  env=Environment(), training_timesteps=config.training_timesteps,
+def learn(  env=Environment(), training_timesteps=config.training_timesteps, load_model=config.load_model,
             explore_start_eps=config.explore_start_eps, explore_final_eps=config.explore_final_eps,
             save_path=config.save_path, save_interval=config.save_interval,
             gamma=config.gamma, grad_norm=config.grad_norm_dqn,
@@ -33,9 +33,11 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
 
     # create network
     qnet = Network().to(device)
+    if load_model is not None:
+        qnet.load_state_dict(torch.load(load_model))
 
-    optimizer = Adam(qnet.parameters(), lr=2.5e-4)
-    # scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
+    optimizer = Adam(qnet.parameters(), lr=2e-4)
+    scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
     # scaler = amp.GradScaler()
 
     # create target network
@@ -91,7 +93,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             # scaler.step(optimizer)
             # scaler.update()
 
-            # scheduler.step()
+            scheduler.step()
 
             # soft update
             for tar_net, net in zip(tar_qnet.parameters(), qnet.parameters()):
@@ -108,7 +110,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps,
             start_ts = time.time()
             print('FPS {}'.format(fps))
 
-            if n_iter > learning_starts == 0:
+            if n_iter > learning_starts:
                 print('vloss: {:.6f}'.format(loss.item()))
             
         # save model
@@ -204,8 +206,6 @@ if __name__ == '__main__':
 #         std = torch.empty_like(m.bias).fill_(noise_scale)
 #         m.bias.data.add_(torch.normal(0, std).to(device))
 # q_perturb = qnet(ob)
-# if atom_num > 1:
-#     q_perturb = (q_perturb.exp() * vrange).sum(2)
 # kl_perturb = ((log_softmax(q, 1) - log_softmax(q_perturb, 1)) *
 #             softmax(q, 1)).sum(-1).mean()
 # kl_explore = -math.log(1 - epsilon + epsilon / action_dim)
