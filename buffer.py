@@ -255,7 +255,7 @@ class ReplayBuffer:
     
     def step(self):
         self.counter += 1
-        if self.counter == 125000:
+        if self.counter == 350000:
             self.counter = 0
             self.n_step += 1
 

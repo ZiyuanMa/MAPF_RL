@@ -16,7 +16,7 @@ reward_fn = dict(move=-0.075,
 ############################################################
 
 # basic training setting
-training_timesteps = 2400000
+training_timesteps = 2000000
 save_interval=50000
 gamma=0.99
 batch_size_dqn=32
@@ -28,7 +28,7 @@ save_path='./models'
 max_steps = 200
 bt_steps = 32
 dtype = 'float32'
-load_model = './models/1850000.pth'
+load_model = None
 
 # gradient norm clipping
 grad_norm_dqn=10

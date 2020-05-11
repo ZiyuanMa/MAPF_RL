@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam, lr_scheduler
+from torch.nn.functional import log_softmax, softmax
 # from torch.cuda import amp
 import os
 import random
 import time
+import math
 from copy import deepcopy
 import numpy as np
 import argparse
@@ -29,7 +31,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
             learning_starts=config.learning_starts, target_network_update_freq=config.target_network_update_freq,
             buffer_size=config.buffer_size, max_steps=config.max_steps, imitation_ratio=config.imitation_ratio,
             prioritized_replay_alpha=config.prioritized_replay_alpha, prioritized_replay_beta=config.prioritized_replay_beta,
-            double_q=config.double_q):
+            double_q=config.double_q, noisy_param=False):
 
     # create network
     qnet = Network().to(device)
@@ -37,7 +39,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
         qnet.load_state_dict(torch.load(load_model))
 
     optimizer = Adam(qnet.parameters(), lr=2e-4)
-    scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
+    scheduler = lr_scheduler.StepLR(optimizer, 200000, gamma=0.5)
     # scaler = amp.GradScaler()
 
     # create target network
@@ -46,7 +48,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
     # create replay buffer
     buffer = PrioritizedReplayBuffer(buffer_size, device, prioritized_replay_alpha, prioritized_replay_beta)
 
-    generator = _generate(env, qnet, training_timesteps, max_steps, imitation_ratio, explore_start_eps, explore_final_eps)
+    generator = _generate(env, qnet, training_timesteps, max_steps, imitation_ratio, explore_start_eps, explore_final_eps, noisy_param)
 
     start_ts = time.time()
     for n_iter in range(1, training_timesteps + 1):
@@ -122,11 +124,12 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
 
 def _generate(env, qnet,
             training_timesteps, max_steps, imitation_ratio,
-            explore_start_eps, exploration_final_eps):
+            explore_start_eps, exploration_final_eps,
+            noisy_param):
 
     """ Generate training batch sample """
     explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps
-
+    noise_scale = 0.01
     obs_pos = env.reset()
     done = False
 
@@ -154,10 +157,39 @@ def _generate(env, qnet,
 
                 actions = q_val.argmax(1).cpu().tolist()
 
-                # Epsilon Greedy
-                for i in range(len(actions)):
+                if noisy_param:
+                    q_dict = deepcopy(qnet.state_dict())
+                    for _, m in qnet.adv.named_modules():
+                        if isinstance(m, nn.Linear):
+                            std = torch.empty_like(m.weight).fill_(noise_scale)
+                            m.weight.data.add_(torch.normal(0, std).to(device))
+                            std = torch.empty_like(m.bias).fill_(noise_scale)
+                            m.bias.data.add_(torch.normal(0, std).to(device))
+
+                    for _, m in qnet.state.named_modules():
+                        if isinstance(m, nn.Linear):
+                            std = torch.empty_like(m.weight).fill_(noise_scale)
+                            m.weight.data.add_(torch.normal(0, std).to(device))
+                            std = torch.empty_like(m.bias).fill_(noise_scale)
+                            m.bias.data.add_(torch.normal(0, std).to(device))
+
+                    q_perturb = qnet.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
+                    kl_perturb = ((log_softmax(q_val, 1) - log_softmax(q_perturb, 1)) *
+                                softmax(q_val, 1)).sum(-1).mean()
+                    kl_explore = -math.log(1 - epsilon + epsilon / 5)
+                    if kl_perturb < kl_explore:
+                        noise_scale *= 1.01
+                    else:
+                        noise_scale /= 1.01
+                    qnet.load_state_dict(q_dict)
                     if random.random() < epsilon:
-                        actions[i] = np.random.randint(0, 5)
+                        actions = [ np.random.randint(0, 5) for _ in range(2) ]
+                    else:
+                        actions = q_perturb.argmax(1).cpu().tolist()
+                else:
+                    for i in range(len(actions)):
+                        if random.random() < epsilon:
+                            actions[i] = np.random.randint(0, 5)
 
         # take action in env
         next_obs_pos, r, done, info = env.step(actions)

@@ -67,14 +67,14 @@ def test_model(num_agents):
         with open(test_case, 'rb') as f:
             tests = pickle.load(f)
 
-        model_name = config.save_interval * 39
+        model_name = config.save_interval * 4
         while os.path.exists('./models/{}.pth'.format(model_name)):
             state_dict = torch.load('./models/{}.pth'.format(model_name))
             network.load_state_dict(state_dict)
             env = Environment()
-            case = 1
+            case = 4
             show = False
-            show_steps = 20
+            show_steps = 30
             fail = 0
             optimal = 0
 
@@ -90,7 +90,6 @@ def test_model(num_agents):
 
                     obs_pos = env.observe()
                     # obs = np.expand_dims(obs, axis=0)
-
 
                     with torch.no_grad():
 
