@@ -21,7 +21,7 @@ save_interval=50000
 gamma=0.99
 batch_size_dqn=32
 train_freq=4
-learning_starts=50000
+learning_starts=10000
 target_network_update_freq=2500
 buffer_size=65536
 save_path='./models'
@@ -36,6 +36,9 @@ grad_norm_dqn=10
 # epsilon greedy
 explore_start_eps = 1.0
 explore_final_eps = 0.05
+
+# distributional dqn
+distributional = True
 
 # prioritized replay
 prioritized_replay_alpha=0.6

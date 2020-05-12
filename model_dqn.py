@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.functional import log_softmax
 from torch.nn.utils.rnn import pack_padded_sequence
 import config
 
@@ -70,13 +71,15 @@ class ResBlock(nn.Module):
 class Network(nn.Module):
     def __init__(self, cnn_channel=config.cnn_channel,
                 obs_dim=config.obs_dim, obs_latent_dim=config.obs_latent_dim,
-                pos_dim=config.pos_dim, pos_latent_dim=config.pos_latent_dim):
+                pos_dim=config.pos_dim, pos_latent_dim=config.pos_latent_dim,
+                distributional=config.distributional):
 
         super().__init__()
 
         self.obs_dim = obs_dim
         self.pos_dim = pos_dim
         self.latent_dim = obs_latent_dim + pos_latent_dim
+        self.distributional = distributional
 
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1, bias=False),
@@ -114,8 +117,12 @@ class Network(nn.Module):
         self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
 
         # dueling q structure
-        self.adv = nn.Linear(self.latent_dim, 5)
-        self.state = nn.Linear(self.latent_dim, 1)
+        if distributional:
+            self.adv = nn.Linear(self.latent_dim, 5*51)
+            self.state = nn.Linear(self.latent_dim, 1*51)
+        else:
+            self.adv = nn.Linear(self.latent_dim, 5)
+            self.state = nn.Linear(self.latent_dim, 1)
 
         self.hidden = None
 
@@ -167,7 +174,13 @@ class Network(nn.Module):
         adv_val = self.adv(self.hidden)
         state_val = self.state(self.hidden)
 
-        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        if self.distributional:
+            adv_val = adv_val.view(-1, 5, 51)
+            state_val = state_val.unsqueeze(1)
+            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+            q_val = log_softmax(q_val, -1)
+        else:
+            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
         self.hidden = self.hidden.unsqueeze(0)
 
@@ -201,6 +214,12 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        if self.distributional:
+            adv_val = adv_val.view(-1, 5, 51)
+            state_val = state_val.unsqueeze(1)
+            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+            q_val = log_softmax(q_val, -1)
+        else:
+            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
         return q_val

@@ -31,7 +31,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
             learning_starts=config.learning_starts, target_network_update_freq=config.target_network_update_freq,
             buffer_size=config.buffer_size, max_steps=config.max_steps, imitation_ratio=config.imitation_ratio,
             prioritized_replay_alpha=config.prioritized_replay_alpha, prioritized_replay_beta=config.prioritized_replay_beta,
-            double_q=config.double_q, noisy_param=False):
+            double_q=config.double_q, noisy_param=False, distributional=config.distributional):
 
     # create network
     qnet = Network().to(device)
@@ -45,10 +45,18 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
     # create target network
     tar_qnet = deepcopy(qnet)
 
+
+    if distributional:
+        min_value = -5
+        max_value = 5
+        atom_num = 51
+        delta_z = 10 / 50
+        z_i = torch.linspace(-5, 5, 51).to(device)
+
     # create replay buffer
     buffer = PrioritizedReplayBuffer(buffer_size, device, prioritized_replay_alpha, prioritized_replay_beta)
 
-    generator = _generate(env, qnet, training_timesteps, max_steps, imitation_ratio, explore_start_eps, explore_final_eps, noisy_param)
+    generator = _generate(env, qnet, training_timesteps, max_steps, imitation_ratio, explore_start_eps, explore_final_eps, noisy_param, distributional)
 
     start_ts = time.time()
     for n_iter in range(1, training_timesteps + 1):
@@ -62,25 +70,41 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
         if n_iter > learning_starts and n_iter % train_freq == 0:
             b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, *extra = buffer.sample(batch_size)
 
+            if distributional:
+                with torch.no_grad():
+                    b_dist_ = tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
+                    b_a_ = (b_dist_ * z_i).sum(-1).argmax(1)
+                    b_tzj = (gamma * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
+                    b_i = (b_tzj - min_value) / delta_z
+                    b_l = b_i.floor()
+                    b_u = b_i.ceil()
+                    b_m = torch.zeros(batch_size*2, atom_num).to(device)
+                    temp = b_dist_[torch.arange(batch_size*2), b_a_, :]
+                    b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
+                    b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
+                b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(batch_size*2), b_action.squeeze(1), :]
+                kl_error = -(b_q * b_m).sum(1).reshape(batch_size, config.num_agents).mean(dim=1)
+                # use kl error as priorities as proposed by Rainbow
+                priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
+                loss = (extra[0] * kl_error).mean()
 
-            with torch.no_grad():
-                # choose max q index from next observation
-                # double q-learning
-                if double_q:
-                    b_action_ = qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).argmax(1, keepdim=True)
-                    b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).gather(1, b_action_)
-                else:
+            else:
+                with torch.no_grad():
+                    # choose max q index from next observation
+                    # double q-learning
+                    if double_q:
+                        b_action_ = qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).argmax(1, keepdim=True)
+                        b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).gather(1, b_action_)
+                    else:
+                        b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).max(1, keepdim=True)[0]
 
-                    b_q_ = (1 - b_done) * tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).max(1, keepdim=True)[0]
+                b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
 
+                abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs().reshape(batch_size, config.num_agents).mean(dim=1, keepdim=True)
 
-            b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
+                priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
 
-            abs_td_error = (b_q - (b_reward + (gamma ** b_steps) * b_q_)).abs().reshape(batch_size, config.num_agents).mean(dim=1, keepdim=True)
-
-            priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
-
-            loss = (extra[0] * huber_loss(abs_td_error)).mean()
+                loss = (extra[0] * huber_loss(abs_td_error)).mean()
 
             optimizer.zero_grad()
 
@@ -125,13 +149,15 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
 def _generate(env, qnet,
             training_timesteps, max_steps, imitation_ratio,
             explore_start_eps, exploration_final_eps,
-            noisy_param):
+            noisy_param, distributional:bool):
 
     """ Generate training batch sample """
     explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps
     noise_scale = 0.01
     obs_pos = env.reset()
     done = False
+    if distributional:
+        vrange = torch.linspace(-5, 5, 51).to(device)
 
     # if use imitation learning
     imitation = True if random.random() < imitation_ratio else False
@@ -154,6 +180,9 @@ def _generate(env, qnet,
             with torch.no_grad():
 
                 q_val = qnet.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
+
+                if distributional:
+                    q_val = (q_val.exp() * vrange).sum(2)
 
                 actions = q_val.argmax(1).cpu().tolist()
 

@@ -29,7 +29,7 @@ class SumTree:
         self.ptr = capacity-1
 
     def sum(self):
-        assert np.sum(self.tree[-self.capacity:]) == self.tree[0]
+        assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
         return self.tree[0]
 
     def min(self):
@@ -76,6 +76,8 @@ class SumTree:
         return idx - self.capacity + 1
 
     def update(self, idx:int, priority:float):
+
+        idx += self.capacity-1
 
         self.tree[idx] = priority
 
