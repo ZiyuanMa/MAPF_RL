@@ -333,8 +333,13 @@ class ReplayBuffer:
 
             bt_steps = min(self.step_buf[self.ptr]+1, config.bt_steps)
 
-            obs = np.swapaxes(self.obs_buf[i+1-bt_steps:i+1], 0, 1)
-            pos = np.swapaxes(self.pos_buf[i+1-bt_steps:i+1], 0, 1)
+
+            if i+1-bt_steps >= 0:
+                obs = np.swapaxes(self.obs_buf[i+1-bt_steps:i+1], 0, 1)
+                pos = np.swapaxes(self.pos_buf[i+1-bt_steps:i+1], 0, 1)
+            else:
+                obs = np.swapaxes(np.concatenate((self.obs_buf[i+1-bt_steps:], self.obs_buf[:i+1])), 0, 1)
+                pos = np.swapaxes(np.concatenate((self.pos_buf[i+1-bt_steps:], self.pos_buf[:i+1])), 0, 1)
 
             if bt_steps < config.bt_steps:
                 pad_len = config.bt_steps-bt_steps
