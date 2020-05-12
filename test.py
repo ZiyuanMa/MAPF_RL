@@ -51,8 +51,6 @@ def test_model(num_agents):
 
 
     network = Network()
-    state_dict = torch.load('./models/1000000.pth')
-    network.load_state_dict(state_dict)
     network.eval()
     network.to(device)
 
@@ -61,13 +59,15 @@ def test_model(num_agents):
     # x = [i for i in range(2,6)]
     # finish_rate = []
     # optimal_rate = []
+    
+    vrange = torch.linspace(-5, 5, 51).to(device)
 
     for test_case in test_cases:
 
         with open(test_case, 'rb') as f:
             tests = pickle.load(f)
 
-        model_name = config.save_interval * 4
+        model_name = config.save_interval * 12
         while os.path.exists('./models/{}.pth'.format(model_name)):
             state_dict = torch.load('./models/{}.pth'.format(model_name))
             network.load_state_dict(state_dict)
@@ -94,7 +94,8 @@ def test_model(num_agents):
                     with torch.no_grad():
 
                         q_vals = network.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
-
+                        if network.distributional:
+                            q_vals = (q_vals.exp() * vrange).sum(2)
 
                     if i == case and show and env.steps < show_steps:
                         print(q_vals)
