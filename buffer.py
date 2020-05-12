@@ -1,8 +1,3 @@
-"""
-This file is adapted from following files in openai/baselines.
-deepq/replay_buffer.py
-baselines/acer/buffer.py
-"""
 import operator
 import random
 from typing import List
