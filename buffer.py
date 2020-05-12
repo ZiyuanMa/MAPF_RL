@@ -100,6 +100,171 @@ class SumTree:
         self.ptr = self.ptr+1 if self.ptr < 2*self.capacity-2 else self.capacity-1
         self.size += 1
 
+# class ReplayBuffer:
+#     def __init__(self, size, device):
+#         """Create Replay buffer.
+
+#         Parameters
+#         ----------
+#         size: int
+#             Max number of transitions to store in the buffer. When the buffer
+#             overflows the old memories are dropped.
+#         """
+#         self._storage = []
+#         self._maxsize = size
+#         self._next_idx = 0
+#         self._device = device
+#         self.n_step = 1
+#         self.counter = 0
+
+#     def __len__(self):
+#         return len(self._storage)
+
+#     def add(self, args):
+#         if self._next_idx >= len(self._storage):
+#             self._storage.append(args)
+#         else:
+#             self._storage[self._next_idx] = args
+#         self._next_idx = (self._next_idx + 1) % self._maxsize
+
+#     def _encode_sample(self, idxes):
+#         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
+        
+#         for i in idxes:
+#             obs_pos, action, reward, next_obs_pos, done, imitation, info = self._storage[i]
+
+#             # caculate forward steps and cummulated rewards
+#             forward = 1
+#             sum_reward = np.array(reward, dtype=np.float32)
+
+#             if imitation:
+#                 # use Monte Carlo method if it's imitation
+#                 for j in range(1, config.max_steps):
+#                     next_idx = (i+j) % self._maxsize
+#                     if next_idx != self._next_idx and not done:
+#                         _, _, next_reward, _, done, _, _ = self._storage[next_idx]
+
+#                         sum_reward += np.array(next_reward, dtype=np.float32) * (0.99 ** j)
+#                         forward += 1
+
+#                     else:
+#                         break
+#             else:
+#                 # n-steps forward
+#                 for j in range(1, self.n_step):
+#                     next_idx = (i+j) % self._maxsize
+#                     if next_idx != self._next_idx and not done:
+#                         _, _, next_reward, _, next_done, _, next_info = self._storage[next_idx]
+
+#                         if next_info['step'] == 0:
+#                             break
+
+#                         sum_reward += np.array(next_reward, dtype=np.float32) * (0.99 ** j)
+#                         done = next_done
+#                         forward += 1
+
+#                     else:
+#                         break
+            
+#             # obs_pos
+#             bt_steps = min(info['step']+1, config.bt_steps)
+#             num_agents = obs_pos[1].shape[0]
+#             obs = [ [] for agent_id in range(num_agents) ]
+#             pos = [ [] for agent_id in range(num_agents) ]
+
+#             for step in range(bt_steps):
+#                 bt_obs_pos, _, _, _, _, _, _ = self._storage[(i-step)%self._maxsize]
+#                 for agent_id in range(num_agents):
+#                     obs[agent_id].append(bt_obs_pos[0][agent_id])
+#                     pos[agent_id].append(bt_obs_pos[1][agent_id])
+
+#             # reverse sequence of states
+#             for agent_id in range(num_agents):
+#                 obs[agent_id].reverse()
+#                 pos[agent_id].reverse()
+
+
+#             if bt_steps < config.bt_steps:
+#                 pad_len = config.bt_steps-bt_steps
+#                 pad_obs = [ obs_pad for _ in range(pad_len) ]
+#                 pad_pos = [ pos_pad for _ in range(pad_len) ]
+#                 for agent_id in range(num_agents):
+#                     obs[agent_id] += pad_obs
+#                     pos[agent_id] += pad_pos
+
+
+#             # next obs_pos
+#             next_bt_steps = min(bt_steps+forward, config.bt_steps)
+#             next_i = (i+forward-1)%self._maxsize
+
+#             _, _, _, bt_next_obs_pos, _, _, _ = self._storage[next_i]
+#             for agent_id in range(num_agents):
+#                 next_obs = [ [bt_next_obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
+#                 next_pos = [ [bt_next_obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
+
+#             for step in range(next_bt_steps-1):
+#                 bt_next_obs_pos, _, _, _, _, _, _ = self._storage[(next_i-step)%self._maxsize]
+#                 for agent_id in range(num_agents):
+#                     next_obs[agent_id].append(bt_next_obs_pos[0][agent_id])
+#                     next_pos[agent_id].append(bt_next_obs_pos[1][agent_id])
+
+#             for agent_id in range(num_agents):
+#                 next_obs[agent_id].reverse()
+#                 next_pos[agent_id].reverse()
+
+#             if next_bt_steps < config.bt_steps:
+#                 pad_len = config.bt_steps-next_bt_steps
+#                 pad_obs = [ obs_pad for _ in range(pad_len) ]
+#                 pad_pos = [ pos_pad for _ in range(pad_len) ]
+#                 for agent_id in range(num_agents):
+#                     next_obs[agent_id] += pad_obs
+#                     next_pos[agent_id] += pad_pos
+
+#             b_obs.append(obs)
+#             b_pos.append(pos)
+#             b_action += action
+#             b_reward += sum_reward.tolist()
+#             b_next_obs.append(next_obs)
+#             b_next_pos.append(next_pos)
+
+#             b_done += [ done for _ in range(num_agents) ]
+#             b_steps += [ forward for _ in range(num_agents) ]
+#             b_bt_steps += [ bt_steps for _ in range(num_agents) ]
+#             b_next_bt_steps += [ next_bt_steps for _ in range(num_agents) ]
+
+
+#         res = (
+#             torch.from_numpy(np.concatenate(b_obs)).to(self._device),
+#             torch.from_numpy(np.concatenate(b_pos)).to(self._device),
+#             torch.LongTensor(b_action).unsqueeze(1).to(self._device),
+#             torch.FloatTensor(b_reward).unsqueeze(1).to(self._device),
+#             torch.from_numpy(np.concatenate(b_next_obs)).to(self._device),
+#             torch.from_numpy(np.concatenate(b_next_pos)).to(self._device),
+#             torch.FloatTensor(b_done).unsqueeze(1).to(self._device),
+#             torch.FloatTensor(b_steps).unsqueeze(1).to(self._device),
+#             torch.LongTensor(b_bt_steps).to(self._device),
+#             torch.LongTensor(b_next_bt_steps).to(self._device),
+#         )
+
+#         return res
+
+#     def sample(self, batch_size):
+#         """Sample a batch of experiences."""
+#         indexes = range(len(self._storage))
+#         idxes = []
+#         for _ in range(batch_size):
+#             idx = random.choice(indexes)
+#             idxes.append(idx)
+
+#         return self._encode_sample(idxes)
+    
+#     def step(self):
+#         self.counter += 1
+#         if self.counter == 350000:
+#             self.counter = 0
+#             self.n_step += 1
+
+
 class ReplayBuffer:
     def __init__(self, size, device):
         """Create Replay buffer.
@@ -110,127 +275,97 @@ class ReplayBuffer:
             Max number of transitions to store in the buffer. When the buffer
             overflows the old memories are dropped.
         """
-        self._storage = []
-        self._maxsize = size
-        self._next_idx = 0
+
+        self.num_agents = 2
+        self.obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.float32)
+        self.pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
+        self.act_buf = np.zeros((size, self.num_agents), dtype=np.long)
+        self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
+        self.next_obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.float32)
+        self.next_pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
+        self.done_buf = np.zeros(size, dtype=np.int)
+        self.imitat_buf = np.zeros(size, dtype=np.bool)
+        self.step_buf = np.zeros(size, dtype=np.int)
+
+        self.capacity = size
+        self.size = 0
+        self.ptr = 0
         self._device = device
+
+
         self.n_step = 1
         self.counter = 0
 
     def __len__(self):
-        return len(self._storage)
+
+        return self.size
 
     def add(self, args):
-        if self._next_idx >= len(self._storage):
-            self._storage.append(args)
-        else:
-            self._storage[self._next_idx] = args
-        self._next_idx = (self._next_idx + 1) % self._maxsize
+        obs_pos, actions, reward, next_obs_pos, done, imitation, info = args
+
+        self.obs_buf[self.ptr], self.pos_buf[self.ptr] = obs_pos
+        self.act_buf[self.ptr] = actions
+        self.rew_buf[self.ptr] = reward
+        self.next_obs_buf[self.ptr], self.next_pos_buf[self.ptr] = next_obs_pos
+        self.done_buf[self.ptr] = done
+        self.imitat_buf[self.ptr] = imitation
+        self.step_buf[self.ptr] = info['step']
+
+        self.ptr = (self.ptr + 1) % self.capacity
+
+        if self.size < self.capacity:
+            self.size += 1
 
     def _encode_sample(self, idxes):
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
         
         for i in idxes:
-            obs_pos, action, reward, next_obs_pos, done, imitation, info = self._storage[i]
-
-            # caculate forward steps and cummulated rewards
             forward = 1
-            sum_reward = np.array(reward, dtype=np.float32)
-
-            if imitation:
+            if self.imitat_buf[i]:
                 # use Monte Carlo method if it's imitation
-                for j in range(1, config.max_steps):
-                    next_idx = (i+j) % self._maxsize
-                    if next_idx != self._next_idx and not done:
-                        _, _, next_reward, _, done, _, _ = self._storage[next_idx]
+                while not self.done_buf[i+forward-1] and i+forward != self.ptr:
+                    forward += 1
 
-                        sum_reward += np.array(next_reward, dtype=np.float32) * (0.99 ** j)
-                        forward += 1
+                reward = np.sum(self.rew_buf[i:i+forward]*discounts[:forward], axis=0)
 
-                    else:
-                        break
             else:
-                # n-steps forward
-                for j in range(1, self.n_step):
-                    next_idx = (i+j) % self._maxsize
-                    if next_idx != self._next_idx and not done:
-                        _, _, next_reward, _, next_done, _, next_info = self._storage[next_idx]
+                reward = self.rew_buf[i]
 
-                        if next_info['step'] == 0:
-                            break
+            bt_steps = min(self.step_buf[self.ptr]+1, config.bt_steps)
 
-                        sum_reward += np.array(next_reward, dtype=np.float32) * (0.99 ** j)
-                        done = next_done
-                        forward += 1
-
-                    else:
-                        break
-            
-            # obs_pos
-            bt_steps = min(info['step']+1, config.bt_steps)
-            num_agents = obs_pos[1].shape[0]
-            obs = [ [] for agent_id in range(num_agents) ]
-            pos = [ [] for agent_id in range(num_agents) ]
-
-            for step in range(bt_steps):
-                bt_obs_pos, _, _, _, _, _, _ = self._storage[(i-step)%self._maxsize]
-                for agent_id in range(num_agents):
-                    obs[agent_id].append(bt_obs_pos[0][agent_id])
-                    pos[agent_id].append(bt_obs_pos[1][agent_id])
-
-            # reverse sequence of states
-            for agent_id in range(num_agents):
-                obs[agent_id].reverse()
-                pos[agent_id].reverse()
-
+            obs = np.swapaxes(self.obs_buf[i+1-bt_steps:i+1], 0, 1)
+            pos = np.swapaxes(self.pos_buf[i+1-bt_steps:i+1], 0, 1)
 
             if bt_steps < config.bt_steps:
                 pad_len = config.bt_steps-bt_steps
-                pad_obs = [ obs_pad for _ in range(pad_len) ]
-                pad_pos = [ pos_pad for _ in range(pad_len) ]
-                for agent_id in range(num_agents):
-                    obs[agent_id] += pad_obs
-                    pos[agent_id] += pad_pos
+                obs = np.pad(obs, ((0,0),(0,pad_len),(0,0),(0,0),(0,0)))
+                pos = np.pad(pos, ((0,0),(0,pad_len),(0,0)))
 
+                next_bt_steps = bt_steps+1
 
-            # next obs_pos
-            next_bt_steps = min(bt_steps+forward, config.bt_steps)
-            next_i = (i+forward-1)%self._maxsize
+                next_obs = np.copy(obs)
+                next_obs[:,bt_steps] = self.next_obs_buf[i]
 
-            _, _, _, bt_next_obs_pos, _, _, _ = self._storage[next_i]
-            for agent_id in range(num_agents):
-                next_obs = [ [bt_next_obs_pos[0][agent_id]] for agent_id in range(num_agents) ]
-                next_pos = [ [bt_next_obs_pos[1][agent_id]] for agent_id in range(num_agents) ]
+                next_pos = np.copy(pos)
+                next_pos[:,bt_steps] = self.next_pos_buf[i]
 
-            for step in range(next_bt_steps-1):
-                bt_next_obs_pos, _, _, _, _, _, _ = self._storage[(next_i-step)%self._maxsize]
-                for agent_id in range(num_agents):
-                    next_obs[agent_id].append(bt_next_obs_pos[0][agent_id])
-                    next_pos[agent_id].append(bt_next_obs_pos[1][agent_id])
+            else:
+                next_bt_steps = bt_steps
+                next_obs = np.concatenate(obs[1:], np.expand_dims(self.next_obs_buf[i], axis=0))
+                next_pos = np.concatenate(pos[1:], np.expand_dims(self.next_pos_buf[i], axis=0))
 
-            for agent_id in range(num_agents):
-                next_obs[agent_id].reverse()
-                next_pos[agent_id].reverse()
-
-            if next_bt_steps < config.bt_steps:
-                pad_len = config.bt_steps-next_bt_steps
-                pad_obs = [ obs_pad for _ in range(pad_len) ]
-                pad_pos = [ pos_pad for _ in range(pad_len) ]
-                for agent_id in range(num_agents):
-                    next_obs[agent_id] += pad_obs
-                    next_pos[agent_id] += pad_pos
 
             b_obs.append(obs)
             b_pos.append(pos)
-            b_action += action
-            b_reward += sum_reward.tolist()
+            b_action += self.act_buf[i].tolist()
+            b_reward += reward.tolist()
             b_next_obs.append(next_obs)
             b_next_pos.append(next_pos)
 
-            b_done += [ done for _ in range(num_agents) ]
-            b_steps += [ forward for _ in range(num_agents) ]
-            b_bt_steps += [ bt_steps for _ in range(num_agents) ]
-            b_next_bt_steps += [ next_bt_steps for _ in range(num_agents) ]
+            b_done += [ self.done_buf[i] for _ in range(self.num_agents) ]
+            b_steps += [ forward for _ in range(self.num_agents) ]
+            b_bt_steps += [ bt_steps for _ in range(self.num_agents) ]
+            b_next_bt_steps += [ next_bt_steps for _ in range(self.num_agents) ]
 
 
         res = (
@@ -250,7 +385,7 @@ class ReplayBuffer:
 
     def sample(self, batch_size):
         """Sample a batch of experiences."""
-        indexes = range(len(self._storage))
+        indexes = range(len(self.size))
         idxes = []
         for _ in range(batch_size):
             idx = random.choice(indexes)
@@ -263,9 +398,6 @@ class ReplayBuffer:
         if self.counter == 350000:
             self.counter = 0
             self.n_step += 1
-
-
-
 
 class PrioritizedReplayBuffer(ReplayBuffer):
     def __init__(self, size, device, alpha, beta):
@@ -334,7 +466,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         for idx, priority in zip(idxes, priorities):
             assert (priority > 0).all()
-            assert 0 <= idx < len(self._storage)
+            assert 0 <= idx < self.size
 
             self.priority_tree.update(idx, priority**self.alpha)
 
@@ -342,136 +474,3 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 
 
-class ReplayBuffer:
-    def __init__(self, size, device):
-        """Create Replay buffer.
-
-        Parameters
-        ----------
-        size: int
-            Max number of transitions to store in the buffer. When the buffer
-            overflows the old memories are dropped.
-        """
-
-        self.num_agents = 2
-        self.obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.float32)
-        self.pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
-        self.act_buf = np.zeros((size, self.num_agents), dtype=np.np.long)
-        self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
-        self.next_obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.float32)
-        self.next_pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
-        self.done_buf = np.zeros(size, dtype=np.int)
-        self.imitat_buf = np.zeros(size, dtype=np.bool)
-        self.step_buf = np.zeros(size, dtype=np.int)
-
-        self.capacity = size
-        self.size = 0
-        self.ptr = 0
-        self._device = device
-
-
-        self.n_step = 1
-        self.counter = 0
-
-    def __len__(self):
-
-        return self.size
-
-    def add(self, args):
-        obs_pos, actions, reward, next_obs_pos, done, imitation, info = args
-
-        self.obs_buf[self.ptr], self.pos_buf[self.ptr] = obs_pos
-        self.act_buf[self.ptr] = actions
-        self.rew_buf[self.ptr] = reward
-        self.next_obs_buf[self.ptr], self.next_pos_buf[self.ptr] = next_obs_pos
-        self.done_buf[self.ptr] = done
-        self.imitat_buf[self.ptr] = imitation
-        self.step_buf[self.ptr] = info['step']
-
-        self.ptr = (self.ptr + 1) % self.capacity
-
-        if self.size < self.capacity:
-            self.size += 1
-
-    def _encode_sample(self, idxes):
-        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
-        
-        for i in idxes:
-            forward = 1
-            if self.imitat_buf[i]:
-                # use Monte Carlo method if it's imitation
-                while not self.done_buf[i+forward-1] and i+forward != self.ptr:
-                    forward += 1
-
-                reward = np.sum(self.rew_buf[i:i+forward]*discounts[:forward], axis=0)
-
-            else:
-                reward = self.rew_buf[i]
-
-            bt_steps = min(self.step_buf[self.ptr]+1, config.bt_steps)
-
-            obs = np.swapaxes(self.obs_buf[i+1-bt_steps:i+1], 0, 1)
-            pos = np.swapaxes(self.pos_buf[i+1-bt_steps:i+1], 0, 1)
-
-            if bt_steps < config.bt_steps:
-                pad_len = config.bt_steps-bt_steps
-                obs = np.pad(obs, ((0,0),(0,pad_len),(0,0),(0,0),(0,0)))
-                pos = np.pad(pos, ((0,0),(0,pad_len),(0,0),(0,0),(0,0)))
-
-                next_bt_steps = bt_steps+1
-
-                next_obs = np.copy(obs)
-                next_obs[bt_steps] = self.next_obs_buf[i]
-
-                next_pos = np.copy(pos)
-                next_pos[bt_steps] = self.next_pos_buf[i]
-
-            else:
-                next_bt_steps = bt_steps
-                next_obs = np.concatenate(obs[1:], np.expand_dims(self.next_obs_buf[i], axis=0))
-                next_pos = np.concatenate(pos[1:], np.expand_dims(self.next_pos_buf[i], axis=0))
-
-
-            b_obs.append(obs)
-            b_pos.append(pos)
-            b_action += self.act_buf[i].tolist()
-            b_reward += reward.tolist()
-            b_next_obs.append(next_obs)
-            b_next_pos.append(next_pos)
-
-            b_done += [ self.done_buf[i] for _ in range(self.num_agents) ]
-            b_steps += [ forward for _ in range(self.num_agents) ]
-            b_bt_steps += [ bt_steps for _ in range(self.num_agents) ]
-            b_next_bt_steps += [ next_bt_steps for _ in range(self.num_agents) ]
-
-
-        res = (
-            torch.from_numpy(np.concatenate(b_obs)).to(self._device),
-            torch.from_numpy(np.concatenate(b_pos)).to(self._device),
-            torch.LongTensor(b_action).unsqueeze(1).to(self._device),
-            torch.FloatTensor(b_reward).unsqueeze(1).to(self._device),
-            torch.from_numpy(np.concatenate(b_next_obs)).to(self._device),
-            torch.from_numpy(np.concatenate(b_next_pos)).to(self._device),
-            torch.FloatTensor(b_done).unsqueeze(1).to(self._device),
-            torch.FloatTensor(b_steps).unsqueeze(1).to(self._device),
-            torch.LongTensor(b_bt_steps).to(self._device),
-            torch.LongTensor(b_next_bt_steps).to(self._device),
-        )
-
-        return res
-
-    def sample(self, batch_size):
-        """Sample a batch of experiences."""
-        indexes = range(len(self.size))
-        idxes = []
-        for _ in range(batch_size):
-            idx = random.choice(indexes)
-            idxes.append(idx)
-
-        return self._encode_sample(idxes)
-    
-    def step(self):
-        self.counter += 1
-        if self.counter == 350000:
-            self.counter = 0
-            self.n_step += 1
