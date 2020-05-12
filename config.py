@@ -16,7 +16,7 @@ reward_fn = dict(move=-0.075,
 ############################################################
 
 # basic training setting
-training_timesteps = 2000000
+training_timesteps = 1800000
 save_interval=50000
 gamma=0.99
 batch_size_dqn=32
@@ -35,7 +35,7 @@ grad_norm_dqn=10
 
 # epsilon greedy
 explore_start_eps = 1.0
-explore_final_eps = 0.05
+explore_final_eps = 0.02
 
 # distributional dqn
 distributional = True

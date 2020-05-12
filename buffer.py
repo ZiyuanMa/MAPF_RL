@@ -351,8 +351,8 @@ class ReplayBuffer:
 
             else:
                 next_bt_steps = bt_steps
-                next_obs = np.concatenate(obs[1:], np.expand_dims(self.next_obs_buf[i], axis=0))
-                next_pos = np.concatenate(pos[1:], np.expand_dims(self.next_pos_buf[i], axis=0))
+                next_obs = np.concatenate((obs[:,1:], np.expand_dims(self.next_obs_buf[i], axis=1)), axis=1)
+                next_pos = np.concatenate((pos[:,1:], np.expand_dims(self.next_pos_buf[i], axis=1)), axis=1)
 
 
             b_obs.append(obs)
