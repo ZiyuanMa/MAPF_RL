@@ -80,11 +80,11 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
                     b_i = (b_tzj - min_value) / delta_z
                     b_l = b_i.floor()
                     b_u = b_i.ceil()
-                    b_m = torch.zeros(batch_size*2, atom_num).to(device)
-                    temp = b_dist_[torch.arange(batch_size*2), b_a_, :]
+                    b_m = torch.zeros(batch_size*config.num_agents, atom_num).to(device)
+                    temp = b_dist_[torch.arange(batch_size*config.num_agents), b_a_, :]
                     b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
                     b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
-                b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(batch_size*2), b_action.squeeze(1), :]
+                b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(batch_size*config.num_agents), b_action.squeeze(1), :]
                 kl_error = -(b_q * b_m).sum(1).reshape(batch_size, config.num_agents).mean(dim=1)
                 # use kl error as priorities as proposed by Rainbow
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
@@ -156,7 +156,6 @@ def _generate(env, qnet, device,
     """ Generate training batch sample """
     explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps
     noise_scale = 0.01
-    obs_pos = env.reset()
     done = False
     if distributional:
         vrange = torch.linspace(-5, 5, 51).to(device)
@@ -173,6 +172,10 @@ def _generate(env, qnet, device,
     if imitation:
         map, agents_pos, goals_pos, imitation_actions = q.get()
         env.load(map, agents_pos, goals_pos)
+        obs_pos = env.observe()
+    else:
+        obs_pos = env.reset()
+
 
     epsilon = explore_start_eps
     for _ in range(1, training_timesteps + 1):
@@ -239,7 +242,7 @@ def _generate(env, qnet, device,
 
             obs_pos = next_obs_pos 
         else:
-            obs_pos = env.reset()
+            
             done = False
             qnet.reset()
 
@@ -247,6 +250,9 @@ def _generate(env, qnet, device,
             if imitation:
                 map, agents_pos, goals_pos, imitation_actions = q.get()
                 env.load(map, agents_pos, goals_pos)
+                obs_pos = env.observe()
+            else:
+                obs_pos = env.reset()
 
         
         epsilon -= explore_delta

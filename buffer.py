@@ -92,7 +92,7 @@ class ReplayBuffer:
             overflows the old memories are dropped.
         """
 
-        self.num_agents = 2
+        self.num_agents = config.num_agents
         self.obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.float32)
         self.pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
         self.act_buf = np.zeros((size, self.num_agents), dtype=np.long)
