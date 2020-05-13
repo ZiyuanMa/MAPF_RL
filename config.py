@@ -28,7 +28,7 @@ save_path='./models'
 max_steps = 200
 bt_steps = 32
 dtype = 'float32'
-load_model = './models/1050000.pth'
+load_model = None
 
 # gradient norm clipping
 grad_norm_dqn=10
@@ -48,7 +48,7 @@ prioritized_replay_beta=0.4
 double_q = False
 
 # imitation learning
-imitation_ratio = 0.4
+imitation_ratio = 0.6
 
 # dqn network setting
 cnn_channel = 64
