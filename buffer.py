@@ -139,11 +139,15 @@ class ReplayBuffer:
             forward = 1
             if self.imitat_buf[i]:
                 # use Monte Carlo method if it's imitation
-                next = (i+1)%self.capacity
+
                 while not self.done_buf[(i+forward-1)%self.capacity] and (i+forward)%self.capacity != self.ptr:
                     forward += 1
 
-                reward = np.sum(self.rew_buf[i:i+forward]*discounts[:forward], axis=0)
+                if i+forward > self.capacity:
+                    reward = np.concatenate((self.rew_buf[i:], self.rew_buf[:(i+forward)%self.capacity]))
+                    reward = np.sum(reward*discounts[:forward], axis=0)
+                else:
+                    reward = np.sum(self.rew_buf[i:i+forward]*discounts[:forward], axis=0)
 
             else:
                 reward = self.rew_buf[i]
