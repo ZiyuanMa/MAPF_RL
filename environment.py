@@ -376,13 +376,13 @@ class Environment:
         pos: vector of length 4, current agent position and goal position
 
         '''
-        obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.float32)
-        pos = np.zeros((self.num_agents, 4), dtype=np.float32)
+        obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
+        pos = np.zeros((self.num_agents, 4), dtype=np.uint8)
 
         # 0 represents obstacle to match 0 padding in CNN 
         obstacle_map = np.pad(self.map, self.obs_radius, 'constant', constant_values=1)==0
 
-        agent_map = np.zeros((self.map_size), dtype=np.float32)
+        agent_map = np.zeros((self.map_size), dtype=np.bool)
         agent_map[self.agents_pos[:,0], self.agents_pos[:,1]] = 1
         agent_map = np.pad(agent_map, self.obs_radius, 'constant', constant_values=0)
 
@@ -391,8 +391,8 @@ class Environment:
 
         for i in range(self.num_agents):
             x, y = self.agents_pos[i]
-            pos[i][0:2] = self.agents_pos[i].astype(np.float32)
-            pos[i][2:4] = self.goals_pos[i].astype(np.float32)
+            pos[i][0:2] = self.agents_pos[i].astype(np.uint8)
+            pos[i][2:4] = self.goals_pos[i].astype(np.uint8)
 
             obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 

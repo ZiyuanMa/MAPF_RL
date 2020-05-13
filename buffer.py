@@ -93,15 +93,15 @@ class ReplayBuffer:
         """
 
         self.num_agents = config.num_agents
-        self.obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.float32)
-        self.pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
-        self.act_buf = np.zeros((size, self.num_agents), dtype=np.long)
+        self.obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.bool)
+        self.pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.uint8)
+        self.act_buf = np.zeros((size, self.num_agents), dtype=np.uint8)
         self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
-        self.next_obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.float32)
-        self.next_pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
-        self.done_buf = np.zeros(size, dtype=np.int)
+        self.next_obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.bool)
+        self.next_pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.uint8)
+        self.done_buf = np.zeros(size, dtype=np.bool)
         self.imitat_buf = np.zeros(size, dtype=np.bool)
-        self.step_buf = np.zeros(size, dtype=np.int)
+        self.step_buf = np.zeros(size, dtype=np.uint16)
 
         self.capacity = size
         self.size = 0
@@ -195,16 +195,16 @@ class ReplayBuffer:
 
 
         res = (
-            torch.from_numpy(np.concatenate(b_obs)).to(self.device),
-            torch.from_numpy(np.concatenate(b_pos)).to(self.device),
+            torch.FloatTensor(np.concatenate(b_obs)).to(self.device),
+            torch.FloatTensor(np.concatenate(b_pos)).to(self.device),
             torch.LongTensor(b_action).unsqueeze(1).to(self.device),
             torch.FloatTensor(b_reward).unsqueeze(1).to(self.device),
-            torch.from_numpy(np.concatenate(b_next_obs)).to(self.device),
-            torch.from_numpy(np.concatenate(b_next_pos)).to(self.device),
+            torch.FloatTensor(np.concatenate(b_next_obs)).to(self.device),
+            torch.FloatTensor(np.concatenate(b_next_pos)).to(self.device),
             torch.FloatTensor(b_done).unsqueeze(1).to(self.device),
-            torch.FloatTensor(b_steps).unsqueeze(1).to(self.device),
-            torch.LongTensor(b_bt_steps).to(self.device),
-            torch.LongTensor(b_next_bt_steps).to(self.device),
+            torch.IntTensor(b_steps).unsqueeze(1).to(self.device),
+            torch.IntTensor(b_bt_steps).to(self.device),
+            torch.IntTensor(b_next_bt_steps).to(self.device),
         )
 
         return res
