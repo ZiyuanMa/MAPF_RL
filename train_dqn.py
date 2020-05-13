@@ -9,12 +9,13 @@ import time
 import math
 from copy import deepcopy
 import numpy as np
+import multiprocessing as mp
 import argparse
 
 from buffer import PrioritizedReplayBuffer
 from model_dqn import Network
 from environment import Environment
-from search import find_path
+from search import find_path, Search
 import config
 
 torch.manual_seed(0)
@@ -160,14 +161,18 @@ def _generate(env, qnet, device,
     if distributional:
         vrange = torch.linspace(-5, 5, 51).to(device)
 
+    # use another process to do imitation search
+    q = mp.Queue(10)
+    worker = Search(Environment(), q)
+    worker.daemon = True
+    worker.start()
+
+
     # if use imitation learning
     imitation = True if random.random() < imitation_ratio else False
-    imitation_actions = find_path(env) if imitation else None
-
-    # if no solution, reset environment
-    while imitation and imitation_actions is None:
-        obs_pos = env.reset()
-        imitation_actions = find_path(env)
+    if imitation:
+        map, agents_pos, goals_pos, imitation_actions = q.get()
+        env.load(map, agents_pos, goals_pos)
 
     epsilon = explore_start_eps
     for _ in range(1, training_timesteps + 1):
@@ -239,16 +244,15 @@ def _generate(env, qnet, device,
             qnet.reset()
 
             imitation = True if random.random() < imitation_ratio else False
-            imitation_actions = find_path(env) if imitation else None
-
-            while imitation and imitation_actions is None:
-                obs_pos = env.reset()
-                imitation_actions = find_path(env)
+            if imitation:
+                map, agents_pos, goals_pos, imitation_actions = q.get()
+                env.load(map, agents_pos, goals_pos)
 
         
         epsilon -= explore_delta
             
-
+    worker.terminate()
+    worker.join()
 
 def huber_loss(abs_td_error):
     flag = (abs_td_error < 1).float()

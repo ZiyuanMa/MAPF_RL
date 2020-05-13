@@ -450,26 +450,11 @@ class Search(mp.Process):
 
     def run(self):
         while True:
-            # # wait for master process
-            # self.lock.wait()
 
-            message = self.receive_queue.get()
+            self.env.reset()
+            path = find_path(self.env)
+            while path is None:
+                self.env.reset()
+                path = find_path(self.env)
 
-            if message is None:
-                # process end
-                break
-            elif message[1] is True:
-                # new episode, reinitialize lstm hidden state
-                self.network.hidden = None
-
-            obs = message[0]
-            
-            obs = np.expand_dims(obs, axis=0)
-            obs = torch.from_numpy(obs)
-
-            with torch.no_grad():
-                policy, value = self.network(obs)
-
-            action_prob, action_idx = policy.max(1)
-
-            self.send_queue.put((action_idx.item(), action_prob.item(), value.item()))
+            self.queue.put((np.copy(self.env.map), np.copy(self.env.agents_pos), np.copy(self.env.goals_pos), path))
