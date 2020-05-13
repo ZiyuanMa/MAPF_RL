@@ -28,7 +28,7 @@ save_path='./models'
 max_steps = 200
 bt_steps = 32
 dtype = 'float32'
-load_model = None
+load_model = './models/1050000.pth'
 
 # gradient norm clipping
 grad_norm_dqn=10
