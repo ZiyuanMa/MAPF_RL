@@ -2,7 +2,10 @@ import time as timer
 import heapq
 import random
 import numpy as np
-from typing import List
+from typing import List, Tuple, Dict
+import multiprocessing as mp
+
+import config
 
 action_list = np.array([[0, 0],[-1, 0],[1, 0],[0, -1],[0, 1]], dtype=np.int8)
 
@@ -18,15 +21,19 @@ def get_sum_of_cost(paths):
     return rst
 
 
-def compute_heuristics(my_map, goal):
+def compute_heuristics(my_map:np.ndarray, goal:Tuple[int,int]) -> Dict[Tuple[int,int],int]:
     # Use Dijkstra to build a shortest-path tree rooted at the goal location
+
+    # open list: (cost, location)
     open_list = []
+
+    # closed list: (location: cost)
     closed_list = dict()
-    root = {'loc': goal, 'cost': 0}
-    heapq.heappush(open_list, (root['cost'], goal, root))
-    closed_list[goal] = root
+
+    heapq.heappush(open_list, (0, goal))
+    closed_list[goal] = 0
     while len(open_list) > 0:
-        (cost, loc, curr) = heapq.heappop(open_list)
+        (cost, loc) = heapq.heappop(open_list)
         for dir in range(4):
             child_loc = move(loc, dir)
             child_cost = cost + 1
@@ -34,25 +41,18 @@ def compute_heuristics(my_map, goal):
             if child_loc[0] < 0 or child_loc[0] >= my_map.shape[0] or child_loc[1] < 0 or child_loc[1] >= my_map.shape[1]:
                continue
 
-            if my_map[child_loc[0], child_loc[1]] == 1:
+            if my_map[child_loc] == 1:
                 continue
 
-            child = {'loc': child_loc, 'cost': child_cost}
             if child_loc in closed_list:
-                existing_node = closed_list[child_loc]
-                if existing_node['cost'] > child_cost:
-                    closed_list[child_loc] = child
-                    # open_list.delete((existing_node['cost'], existing_node['loc'], existing_node))
-                    heapq.heappush(open_list, (child_cost, child_loc, child))
+                assert closed_list[child_loc] <= child_cost
             else:
-                closed_list[child_loc] = child
-                heapq.heappush(open_list, (child_cost, child_loc, child))
+                closed_list[child_loc] = child_cost
+                heapq.heappush(open_list, (child_cost, child_loc))
 
     # build the heuristics table
-    h_values = dict()
-    for loc, node in closed_list.items():
-        h_values[loc] = node['cost']
-    return h_values
+
+    return closed_list
 
 
 def build_constraint_table(constraints, agent):
@@ -95,9 +95,10 @@ def get_path(goal_node):
     return path
 
 
-def is_constrained(curr_loc, next_loc, next_time, constraint_table):
+def is_constrained(curr_loc:Tuple[int,int], next_loc:Tuple[int,int], next_time:int, constraint_table):
 
     if not constraint_table:
+        # constraint_table is empty
         return False
 
     if next_time in constraint_table:
@@ -141,7 +142,7 @@ def compare_nodes(n1, n2):
     return n1['g_val'] + n1['h_val'] < n2['g_val'] + n2['h_val']
 
 
-def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
+def a_star(my_map:np.ndarray, start_loc:Tuple[int,int], goal_loc:Tuple[int,int], h_values:Dict[Tuple[int,int],int], agent:int, constraints:list):
     """ my_map      - binary obstacle map
         start_loc   - start position
         goal_loc    - goal position
@@ -175,7 +176,7 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
             return path
 
         # Task 2.4
-        if curr['timestep'] >= 200:
+        if curr['timestep'] >= config.max_steps:
             continue
 
         for dir in range(5):
@@ -190,7 +191,7 @@ def a_star(my_map, start_loc, goal_loc, h_values, agent, constraints):
             if child_loc[0] < 0 or child_loc[0] >= my_map.shape[0] or child_loc[1] < 0 or child_loc[1] >= my_map.shape[1]:
                 continue
 
-            if my_map[child_loc[0], child_loc[1]] == 1:
+            if my_map[child_loc] == 1:
                 continue
 
             if is_constrained(curr['loc'], child_loc, curr['timestep']+1, table):
@@ -396,15 +397,9 @@ def find_path(env) -> List[int]:
 
     map = np.copy(env.map)
 
-    temp_agents_pos = np.copy(env.agents_pos)
-    agents_pos= []
-    for pos in temp_agents_pos:
-        agents_pos.append(tuple(pos))
-
-    temp_goals_pos = np.copy(env.goals_pos)
-    goals_pos = []
-    for pos in temp_goals_pos:
-        goals_pos.append(tuple(pos))
+    agents_pos = [ tuple(pos) for pos in env.agents_pos ]
+    
+    goals_pos = [ tuple(pos) for pos in env.goals_pos ]
 
     solver = CBSSolver(map, agents_pos, goals_pos)
     paths = solver.find_solution()
@@ -444,4 +439,37 @@ def find_path(env) -> List[int]:
         else:
             actions.append(step_action)
 
-    return actions 
+    return actions
+
+class Search(mp.Process):
+    def __init__(self, environment, queue):
+        '''the process that only do network caculation, one for each agent'''
+        super().__init__()
+        self.env = environment
+        self.queue = queue
+
+    def run(self):
+        while True:
+            # # wait for master process
+            # self.lock.wait()
+
+            message = self.receive_queue.get()
+
+            if message is None:
+                # process end
+                break
+            elif message[1] is True:
+                # new episode, reinitialize lstm hidden state
+                self.network.hidden = None
+
+            obs = message[0]
+            
+            obs = np.expand_dims(obs, axis=0)
+            obs = torch.from_numpy(obs)
+
+            with torch.no_grad():
+                policy, value = self.network(obs)
+
+            action_prob, action_idx = policy.max(1)
+
+            self.send_queue.put((action_idx.item(), action_prob.item(), value.item()))

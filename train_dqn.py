@@ -21,9 +21,10 @@ torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def learn(  env=Environment(), training_timesteps=config.training_timesteps, load_model=config.load_model,
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+            # device = torch.device('cpu'),
             explore_start_eps=config.explore_start_eps, explore_final_eps=config.explore_final_eps,
             save_path=config.save_path, save_interval=config.save_interval,
             gamma=config.gamma, grad_norm=config.grad_norm_dqn,
@@ -56,7 +57,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
     # create replay buffer
     buffer = PrioritizedReplayBuffer(buffer_size, device, prioritized_replay_alpha, prioritized_replay_beta)
 
-    generator = _generate(env, qnet, training_timesteps, max_steps, imitation_ratio, explore_start_eps, explore_final_eps, noisy_param, distributional)
+    generator = _generate(env, qnet, device, training_timesteps, max_steps, imitation_ratio, explore_start_eps, explore_final_eps, noisy_param, distributional)
 
     start_ts = time.time()
     for n_iter in range(1, training_timesteps + 1):
@@ -146,7 +147,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
     torch.save(qnet.state_dict(), os.path.join(save_path, 'model.pth'))
 
 
-def _generate(env, qnet,
+def _generate(env, qnet, device,
             training_timesteps, max_steps, imitation_ratio,
             explore_start_eps, exploration_final_eps,
             noisy_param, distributional:bool):

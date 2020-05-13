@@ -12,8 +12,6 @@ pos_pad = np.zeros((config.pos_dim), dtype=config.dtype)
 
 discounts = np.array([[0.99**i] for i in range(config.max_steps)])
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 class SumTree:
     def __init__(self, capacity):
 
@@ -35,20 +33,6 @@ class SumTree:
             return np.min(self.tree[-self.capacity:-self.capacity+self.size])
         else:
             return np.min(self.tree[-self.capacity:])
-
-    def __setitem__(self, idx, val):
-
-        assert val != 0, 'val is 0'
-        idx += self.capacity-1
-        if self.tree[idx] == 0:
-            self.size += 1
-
-        self.tree[idx] = val
-        
-        idx = (idx-1) // 2
-        while idx >= 0:
-            self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
-            idx = (idx-1) // 2
 
     def __getitem__(self, idx:int):
         assert 0 <= idx < self.capacity
@@ -74,6 +58,7 @@ class SumTree:
         return idx - self.capacity + 1
 
     def update(self, idx:int, priority:float):
+        assert 0 <= idx < self.capacity
 
         idx += self.capacity-1
 
@@ -121,7 +106,7 @@ class ReplayBuffer:
         self.capacity = size
         self.size = 0
         self.ptr = 0
-        self._device = device
+        self.device = device
 
 
         self.n_step = 1
@@ -154,7 +139,8 @@ class ReplayBuffer:
             forward = 1
             if self.imitat_buf[i]:
                 # use Monte Carlo method if it's imitation
-                while not self.done_buf[i+forward-1] and i+forward != self.ptr:
+                next = (i+1)%self.capacity
+                while not self.done_buf[(i+forward-1)%self.capacity] and (i+forward)%self.capacity != self.ptr:
                     forward += 1
 
                 reward = np.sum(self.rew_buf[i:i+forward]*discounts[:forward], axis=0)
@@ -205,23 +191,23 @@ class ReplayBuffer:
 
 
         res = (
-            torch.from_numpy(np.concatenate(b_obs)).to(self._device),
-            torch.from_numpy(np.concatenate(b_pos)).to(self._device),
-            torch.LongTensor(b_action).unsqueeze(1).to(self._device),
-            torch.FloatTensor(b_reward).unsqueeze(1).to(self._device),
-            torch.from_numpy(np.concatenate(b_next_obs)).to(self._device),
-            torch.from_numpy(np.concatenate(b_next_pos)).to(self._device),
-            torch.FloatTensor(b_done).unsqueeze(1).to(self._device),
-            torch.FloatTensor(b_steps).unsqueeze(1).to(self._device),
-            torch.LongTensor(b_bt_steps).to(self._device),
-            torch.LongTensor(b_next_bt_steps).to(self._device),
+            torch.from_numpy(np.concatenate(b_obs)).to(self.device),
+            torch.from_numpy(np.concatenate(b_pos)).to(self.device),
+            torch.LongTensor(b_action).unsqueeze(1).to(self.device),
+            torch.FloatTensor(b_reward).unsqueeze(1).to(self.device),
+            torch.from_numpy(np.concatenate(b_next_obs)).to(self.device),
+            torch.from_numpy(np.concatenate(b_next_pos)).to(self.device),
+            torch.FloatTensor(b_done).unsqueeze(1).to(self.device),
+            torch.FloatTensor(b_steps).unsqueeze(1).to(self.device),
+            torch.LongTensor(b_bt_steps).to(self.device),
+            torch.LongTensor(b_next_bt_steps).to(self.device),
         )
 
         return res
 
     def sample(self, batch_size):
         """Sample a batch of experiences."""
-        indexes = range(len(self.size))
+        indexes = range(self.size)
         idxes = []
         for _ in range(batch_size):
             idx = random.choice(indexes)
@@ -290,7 +276,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         samples_p = np.asarray([self.priority_tree[idx] for idx in idxes])
         weights = np.power(samples_p/min_p, -self.beta)
         weights = torch.from_numpy(weights.astype('float32'))
-        weights = weights.unsqueeze(1).to(self._device)
+        weights = weights.unsqueeze(1).to(self.device)
         encoded_sample = self._encode_sample(idxes)
 
         super().step()
