@@ -157,6 +157,8 @@ def _generate(env, qnet, device,
     explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps
     noise_scale = 0.01
     done = False
+    qnet = qnet.eval()
+    
     if distributional:
         vrange = torch.linspace(-5, 5, 51).to(device)
 
