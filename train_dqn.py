@@ -88,7 +88,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
                 kl_error = -(b_q * b_m).sum(1).reshape(batch_size, config.num_agents).mean(dim=1)
                 # use kl error as priorities as proposed by Rainbow
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
-                loss = kl_error.mean()
+                loss = (extra[0] * kl_error).mean()
 
             else:
                 with torch.no_grad():

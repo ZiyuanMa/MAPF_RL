@@ -218,12 +218,6 @@ class ReplayBuffer:
             idxes.append(idx)
 
         return self._encode_sample(idxes)
-    
-    def step(self):
-        self.counter += 1
-        if self.counter == 350000:
-            self.counter = 0
-            self.n_step += 1
 
 class PrioritizedReplayBuffer(ReplayBuffer):
     def __init__(self, size, device, alpha, beta):
@@ -249,6 +243,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.priority_tree = SumTree(size)
         self.max_priority = 1.0
         self.beta = beta
+        self.delta_b = (1-self.beta)/((config.training_timesteps-config.learning_starts)/config.train_freq)
 
     def add(self, *args, **kwargs):
         """See ReplayBuffer.store_effect"""
@@ -275,15 +270,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Sample a batch of experiences"""
         idxes = self._sample_proportional(batch_size)
 
-        min_p = self.priority_tree.min()
-        
         samples_p = np.asarray([self.priority_tree[idx] for idx in idxes])
+        min_p = np.min(samples_p)
         weights = np.power(samples_p/min_p, -self.beta)
         weights = torch.from_numpy(weights.astype('float32'))
         weights = weights.unsqueeze(1).to(self.device)
         encoded_sample = self._encode_sample(idxes)
 
-        super().step()
+        self.beta += self.delta_b
 
         return encoded_sample + (weights, idxes)
 
@@ -297,6 +291,3 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self.priority_tree.update(idx, priority**self.alpha)
 
             self.max_priority = max(self.max_priority, priority)
-
-
-
