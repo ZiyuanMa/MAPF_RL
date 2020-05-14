@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam, lr_scheduler
-from torch.nn.functional import log_softmax, softmax
+from torch.nn.functional import log_softmax, softmax, kl_div
 # from torch.cuda import amp
 import os
 import random
@@ -84,8 +84,9 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
                     temp = b_dist_[torch.arange(batch_size*config.num_agents), b_a_, :]
                     b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
                     b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
+
                 b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(batch_size*config.num_agents), b_action.squeeze(1), :]
-                kl_error = -(b_q * b_m).sum(1).reshape(batch_size, config.num_agents).mean(dim=1)
+                kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
                 # use kl error as priorities as proposed by Rainbow
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
                 loss = kl_error.mean()
