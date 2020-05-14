@@ -88,7 +88,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
                 kl_error = -(b_q * b_m).sum(1).reshape(batch_size, config.num_agents).mean(dim=1)
                 # use kl error as priorities as proposed by Rainbow
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
-                loss = kl_error.mean()
+                loss = (extra[0] * kl_error).mean()
 
             else:
                 with torch.no_grad():
@@ -157,6 +157,8 @@ def _generate(env, qnet, device,
     explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps
     noise_scale = 0.01
     done = False
+    qnet = qnet.eval()
+
     if distributional:
         vrange = torch.linspace(-5, 5, 51).to(device)
 
@@ -188,7 +190,7 @@ def _generate(env, qnet, device,
             # sample action
             with torch.no_grad():
 
-                q_val = qnet.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
+                q_val = qnet.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
                 if distributional:
                     q_val = (q_val.exp() * vrange).sum(2)
@@ -220,10 +222,11 @@ def _generate(env, qnet, device,
                     else:
                         noise_scale /= 1.01
                     qnet.load_state_dict(q_dict)
-                    if random.random() < epsilon:
-                        actions = [ np.random.randint(0, 5) for _ in range(2) ]
-                    else:
-                        actions = q_perturb.argmax(1).cpu().tolist()
+
+                    actions = q_perturb.argmax(1).cpu().tolist()
+                    for i in range(len(actions)):
+                        if random.random() < epsilon:
+                            actions[i] = np.random.randint(0, 5)
                 else:
                     for i in range(len(actions)):
                         if random.random() < epsilon:
