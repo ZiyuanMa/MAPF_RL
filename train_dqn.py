@@ -86,6 +86,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
                     b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
 
                 b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(batch_size*config.num_agents), b_action.squeeze(1), :]
+
                 kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
                 # use kl error as priorities as proposed by Rainbow
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()

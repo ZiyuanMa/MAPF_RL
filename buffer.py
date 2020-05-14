@@ -188,7 +188,7 @@ class ReplayBuffer:
             b_next_obs.append(next_obs)
             b_next_pos.append(next_pos)
 
-            b_done += [ self.done_buf[i] for _ in range(self.num_agents) ]
+            b_done += [ self.done_buf[(i+forward-1)%self.capacity] for _ in range(self.num_agents) ]
             b_steps += [ forward for _ in range(self.num_agents) ]
             b_bt_steps += [ bt_steps for _ in range(self.num_agents) ]
             b_next_bt_steps += [ next_bt_steps for _ in range(self.num_agents) ]
