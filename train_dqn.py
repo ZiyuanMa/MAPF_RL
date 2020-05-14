@@ -41,7 +41,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
         qnet.load_state_dict(torch.load(load_model))
 
     optimizer = Adam(qnet.parameters(), lr=4e-4)
-    scheduler = lr_scheduler.StepLR(optimizer, 150000, gamma=0.5)
+    scheduler = lr_scheduler.StepLR(optimizer, 125000, gamma=0.5)
     # scaler = amp.GradScaler()
 
     # create target network
@@ -154,10 +154,10 @@ def _generate(env, qnet, device,
             noisy_param, distributional:bool):
 
     """ Generate training batch sample """
-    explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps
+    explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps * 2
     noise_scale = 0.01
     done = False
-    qnet = qnet.eval()
+
 
     if distributional:
         vrange = torch.linspace(-5, 5, 51).to(device)
@@ -257,8 +257,8 @@ def _generate(env, qnet, device,
             else:
                 obs_pos = env.reset()
 
-        
-        epsilon -= explore_delta
+        if epsilon > exploration_final_eps:
+            epsilon -= explore_delta
             
     worker.terminate()
     worker.join()

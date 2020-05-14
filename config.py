@@ -16,17 +16,17 @@ reward_fn = dict(move=-0.075,
 ############################################################
 
 # basic training setting
-training_timesteps = 1800000
+training_timesteps = 1250000
 save_interval=50000
 gamma=0.99
 batch_size_dqn=32
 train_freq=4
-learning_starts=100000
+learning_starts=50000
 target_network_update_freq=2500
-buffer_size=65536
+buffer_size=131072
 save_path='./models'
 max_steps = 200
-bt_steps = 32
+bt_steps = 48
 dtype = 'float32'
 load_model = None
 
@@ -35,7 +35,7 @@ grad_norm_dqn=10
 
 # epsilon greedy
 explore_start_eps = 1.0
-explore_final_eps = 0.02
+explore_final_eps = 0.01
 
 # distributional dqn
 distributional = True
