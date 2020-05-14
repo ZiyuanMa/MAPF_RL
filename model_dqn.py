@@ -92,13 +92,13 @@ class Network(nn.Module):
             nn.BatchNorm2d(cnn_channel),
             nn.ReLU(True),
 
-            nn.Conv2d(cnn_channel, 4, 1, 1, bias=False),
-            nn.BatchNorm2d(4),
+            nn.Conv2d(cnn_channel, 8, 1, 1, bias=False),
+            nn.BatchNorm2d(8),
             nn.ReLU(True),
 
             nn.Flatten(),
 
-            nn.Linear(4*9*9, obs_latent_dim),
+            nn.Linear(8*9*9, obs_latent_dim),
             nn.ReLU(True),
         )
 

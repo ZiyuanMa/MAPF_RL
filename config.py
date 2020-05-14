@@ -53,6 +53,6 @@ imitation_ratio = 0.6
 # dqn network setting
 cnn_channel = 64
 obs_dim = 2
-obs_latent_dim = 240
+obs_latent_dim = 496
 pos_dim = 4
 pos_latent_dim = 16
