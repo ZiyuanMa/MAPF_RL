@@ -152,7 +152,7 @@ class ReplayBuffer:
             else:
                 reward = self.rew_buf[i]
 
-            bt_steps = min(self.step_buf[self.ptr]+1, config.bt_steps)
+            bt_steps = min(self.step_buf[i]+1, config.bt_steps)
 
 
             if i+1-bt_steps >= 0:
