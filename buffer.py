@@ -202,7 +202,7 @@ class ReplayBuffer:
             torch.FloatTensor(np.concatenate(b_next_obs)).to(self.device),
             torch.FloatTensor(np.concatenate(b_next_pos)).to(self.device),
             torch.FloatTensor(b_done).unsqueeze(1).to(self.device),
-            torch.IntTensor(b_steps).unsqueeze(1).to(self.device),
+            torch.FloatTensor(b_steps).unsqueeze(1).to(self.device),
             torch.IntTensor(b_bt_steps).to(self.device),
             torch.IntTensor(b_next_bt_steps).to(self.device),
         )

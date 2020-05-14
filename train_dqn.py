@@ -74,19 +74,20 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
 
             if distributional:
                 with torch.no_grad():
-                    b_dist_ = tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
-                    b_a_ = (b_dist_ * z_i).sum(-1).argmax(1)
+                    b_next_dist = tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
+                    b_next_action = (b_next_dist * z_i).sum(-1).argmax(1)
                     b_tzj = ((gamma ** b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
                     b_i = (b_tzj - min_value) / delta_z
                     b_l = b_i.floor()
                     b_u = b_i.ceil()
                     b_m = torch.zeros(batch_size*config.num_agents, atom_num).to(device)
-                    temp = b_dist_[torch.arange(batch_size*config.num_agents), b_a_, :]
+                    temp = b_next_dist[torch.arange(batch_size*config.num_agents), b_next_action, :]
                     b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
                     b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
 
                 b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(batch_size*config.num_agents), b_action.squeeze(1), :]
-
+                # print(b_q[0])
+                # print(b_m[0])
                 kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
                 # use kl error as priorities as proposed by Rainbow
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
