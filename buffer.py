@@ -471,3 +471,52 @@ class LocalBuffer(ReplayBuffer):
             self.priority_tree.update(idx, priority**self.alpha)
 
             self.max_priority = max(self.max_priority, priority)
+
+    def encode_sample(self, idx):
+        forward = 1
+        if self.imitation:
+            # use Monte Carlo method if it's imitation
+            forward = self.size - idx
+            reward = np.sum(self.rew_buf[idx:self.size+1]*discounts[:self.size+1-idx], axis=0)
+
+        else:
+
+            forward = 1
+            reward = self.rew_buf[idx]
+
+        bt_steps = min(idx, config.bt_steps)
+
+        obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
+        pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
+
+
+        if bt_steps < config.bt_steps:
+            pad_len = config.bt_steps-bt_steps
+            obs = np.pad(obs, ((0,0),(0,pad_len),(0,0),(0,0),(0,0)))
+            pos = np.pad(pos, ((0,0),(0,pad_len),(0,0)))
+
+            next_bt_steps = bt_steps+1
+
+            next_obs = np.copy(obs)
+            next_obs[:,bt_steps] = self.obs_buf[idx+1]
+
+            next_pos = np.copy(pos)
+            next_pos[:,bt_steps] = self.pos_buf[idx+1]
+
+        else:
+            next_bt_steps = bt_steps
+            next_obs = np.concatenate((obs[:,1:], np.expand_dims(self.next_obs_buf[idx], axis=1)), axis=1)
+            next_pos = np.concatenate((pos[:,1:], np.expand_dims(self.next_pos_buf[idx], axis=1)), axis=1)
+
+
+        b_obs.append(obs)
+        b_pos.append(pos)
+        b_action += self.act_buf[idx].tolist()
+        b_reward += reward.tolist()
+        b_next_obs.append(next_obs)
+        b_next_pos.append(next_pos)
+
+        b_done += [ self.done_buf[(idx+forward-1)%self.capacity] for _ in range(self.num_agents) ]
+        b_steps += [ forward for _ in range(self.num_agents) ]
+        b_bt_steps += [ bt_steps for _ in range(self.num_agents) ]
+        b_next_bt_steps += [ next_bt_steps for _ in range(self.num_agents) ]
