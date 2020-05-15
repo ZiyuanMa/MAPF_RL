@@ -1,9 +1,11 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "6"
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam, lr_scheduler
 from torch.nn.functional import log_softmax, softmax, kl_div
 # from torch.cuda import amp
-import os
 import random
 import time
 import math
@@ -40,7 +42,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
     if load_model is not None:
         qnet.load_state_dict(torch.load(load_model))
 
-    optimizer = Adam(qnet.parameters(), lr=8e-4)
+    optimizer = Adam(qnet.parameters(), lr=4e-4)
     scheduler = lr_scheduler.StepLR(optimizer, 100000, gamma=0.5)
     # scaler = amp.GradScaler()
 
@@ -86,9 +88,9 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
                     b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
 
                 b_q = qnet.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(batch_size*config.num_agents), b_action.squeeze(1), :]
-                # print(b_q[0])
-                # print(b_m[0])
-                kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
+
+                kl_error = (-b_q*b_m).sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
+                # kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
                 # use kl error as priorities as proposed by Rainbow
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
                 loss = kl_error.mean()
