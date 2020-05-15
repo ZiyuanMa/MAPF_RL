@@ -35,7 +35,7 @@ grad_norm_dqn=10
 
 # epsilon greedy
 explore_start_eps = 1.0
-explore_final_eps = 0.01
+explore_final_eps = 0.02
 
 # distributional dqn
 distributional = True
