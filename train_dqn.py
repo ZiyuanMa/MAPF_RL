@@ -76,7 +76,7 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
                 with torch.no_grad():
                     b_next_dist = tar_qnet.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
                     b_next_action = (b_next_dist * z_i).sum(-1).argmax(1)
-                    b_tzj = ((gamma ** b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
+                    b_tzj = ((gamma**b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
                     b_i = (b_tzj - min_value) / delta_z
                     b_l = b_i.floor()
                     b_u = b_i.ceil()
