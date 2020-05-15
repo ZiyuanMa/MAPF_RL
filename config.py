@@ -26,7 +26,7 @@ target_network_update_freq=2500
 buffer_size=131072
 save_path='./models'
 max_steps = 200
-bt_steps = 36
+bt_steps = 32
 dtype = 'float32'
 load_model = None
 
