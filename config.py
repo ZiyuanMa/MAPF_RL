@@ -10,6 +10,9 @@ reward_fn = dict(move=-0.075,
                 collision=-0.5,
                 finish=3)
 
+obs_shape = (2,9,9)
+pos_shape = (4)
+
 
 ############################################################
 ####################         DQN        ####################
@@ -25,13 +28,13 @@ learning_starts=50000
 target_network_update_freq=2500
 buffer_size=131072
 save_path='./models'
-max_steps = 200
-bt_steps = 36
+max_steps = 256
+bt_steps = 16
 dtype = 'float32'
 load_model = None
 
 # gradient norm clipping
-grad_norm_dqn=10
+grad_norm_dqn=40
 
 # epsilon greedy
 explore_start_eps = 1.0
@@ -48,7 +51,7 @@ prioritized_replay_beta=0.4
 double_q = False
 
 # imitation learning
-imitation_ratio = 0.6
+imitation_ratio = 0.4
 
 # dqn network setting
 cnn_channel = 64

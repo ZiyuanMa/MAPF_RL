@@ -12,8 +12,76 @@ pos_pad = np.zeros((config.pos_dim), dtype=config.dtype)
 
 discounts = np.array([[0.99**i] for i in range(config.max_steps)])
 
+# class SumTree:
+#     def __init__(self, capacity):
+
+#         layer = 1
+#         while 2**(layer-1) < capacity:
+#             layer += 1
+#         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
+#         self.tree = np.zeros(2**layer-1)
+#         self.capacity = capacity
+#         self.size = 0
+#         self.ptr = capacity-1
+
+#     def sum(self):
+#         assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
+#         return self.tree[0]
+
+#     def min(self):
+#         if self.size < self.capacity:
+#             return np.min(self.tree[-self.capacity:-self.capacity+self.size])
+#         else:
+#             return np.min(self.tree[-self.capacity:])
+
+#     def __getitem__(self, idx:int):
+#         assert 0 <= idx < self.capacity
+
+#         return self.tree[self.capacity-1+idx]
+
+#     def find_prefixsum_idx(self, prefixsum:float):
+#         """
+#         Find the highest index `i` in the array such that
+#             sum(arr[0] + arr[1] + ... + arr[i]) <= prefixsum
+#         """
+        
+#         assert 0 <= prefixsum <= self.sum() + 1e-5
+
+#         idx = 0
+#         while idx < self.capacity-1:  # while non-leaf
+#             if self.tree[2*idx + 1] > prefixsum:
+#                 idx = 2*idx + 1
+#             else:
+#                 prefixsum -= self.tree[2*idx + 1]
+#                 idx = 2*idx + 2
+
+#         return idx - self.capacity + 1
+
+#     def update(self, idx:int, priority:float):
+#         assert 0 <= idx < self.capacity
+
+#         idx += self.capacity-1
+
+#         self.tree[idx] = priority
+
+#         idx = (idx-1) // 2
+#         while idx >= 0:
+#             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
+#             idx = (idx-1) // 2
+
+#     def add(self, priority:float):
+#         self.tree[self.ptr] = priority
+
+#         idx = (self.ptr-1) // 2
+#         while idx >= 0:
+#             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
+#             idx = (idx-1) // 2
+
+#         self.ptr = self.ptr+1 if self.ptr < 2*self.capacity-2 else self.capacity-1
+#         self.size += 1
+
 class SumTree:
-    def __init__(self, capacity):
+    def __init__(self, capacity, priorities):
 
         layer = 1
         while 2**(layer-1) < capacity:
@@ -21,18 +89,22 @@ class SumTree:
         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
         self.tree = np.zeros(2**layer-1)
         self.capacity = capacity
-        self.size = 0
-        self.ptr = capacity-1
+        self.size = len(priorities)
+
+        idx = np.array([ self.capacity-1-i for i in range(len(priorities)) ], dtype=np.int)
+        self.tree[idx] = priorities
+
+        for _ in range(layer-1):
+            idx = (idx-1) // 2
+            idx = np.unique(idx)
+            self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
+        
+        self.sum()
+
 
     def sum(self):
         assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
         return self.tree[0]
-
-    def min(self):
-        if self.size < self.capacity:
-            return np.min(self.tree[-self.capacity:-self.capacity+self.size])
-        else:
-            return np.min(self.tree[-self.capacity:])
 
     def __getitem__(self, idx:int):
         assert 0 <= idx < self.capacity
@@ -69,16 +141,7 @@ class SumTree:
             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
             idx = (idx-1) // 2
 
-    def add(self, priority:float):
-        self.tree[self.ptr] = priority
 
-        idx = (self.ptr-1) // 2
-        while idx >= 0:
-            self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
-            idx = (idx-1) // 2
-
-        self.ptr = self.ptr+1 if self.ptr < 2*self.capacity-2 else self.capacity-1
-        self.size += 1
 
 
 class ReplayBuffer:
@@ -243,7 +306,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.priority_tree = SumTree(size)
         self.max_priority = 1.0
         self.beta = beta
-        self.delta_b = (1-self.beta)/((config.training_timesteps-config.learning_starts)/config.train_freq)
 
     def add(self, *args, **kwargs):
         """See ReplayBuffer.store_effect"""
@@ -277,7 +339,125 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weights = weights.unsqueeze(1).to(self.device)
         encoded_sample = self._encode_sample(idxes)
 
-        self.beta += self.delta_b
+        return encoded_sample + (weights, idxes)
+
+    def update_priorities(self, idxes, priorities):
+        """Update priorities of sampled transitions"""
+
+        for idx, priority in zip(idxes, priorities):
+            assert (priority > 0).all()
+            assert 0 <= idx < self.size
+
+            self.priority_tree.update(idx, priority**self.alpha)
+
+            self.max_priority = max(self.max_priority, priority)
+
+
+
+
+class LocalBuffer(ReplayBuffer):
+    def __init__(self, init_obs_pos, imitation:bool, device, size=config.max_steps, alpha=config.prioritized_replay_alpha, beta=config.prioritized_replay_beta):
+        """
+        Prioritized Replay buffer for each actor
+
+        """
+        super(LocalBuffer, self).__init__(size, device)
+        assert alpha >= 0
+        self.alpha = alpha
+        self.beta = beta
+
+        self.num_agents = init_obs_pos[0].shape[0]
+        # observation length should be (max steps+1)
+        self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
+        self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)
+        self.act_buf = np.zeros((size, self.num_agents), dtype=np.uint8)
+        self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
+        self.q_buf = np.zeros((size+1, self.num_agents, 5), dtype=np.float32)
+
+        self.capacity = size
+        self.size = 0
+        self.device = device
+        self.imitation = imitation
+
+        self.obs_buf[0], self.pos_buf[0] = init_obs_pos
+
+    @property
+    def imitation(self):
+        return self.imitation
+    
+    def __len__(self):
+        return self.size
+
+    def add(self, args):
+
+        assert self.size < self.capacity
+
+        actions, reward, next_obs_pos, q_val = args
+
+        self.act_buf[self.size] = actions
+        self.rew_buf[self.size] = reward
+        self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
+        self.q_buf[self.size] = q_val
+
+        self.size += 1
+
+    def finish(self, last_q_val):
+        # last q value is all zero if done
+
+        self.q_buf[self.size] = last_q_val
+
+        if np.all(last_q_val==0):
+            self.done = True
+        else:
+            self.done = False
+
+        if self.imitation:
+            assert self.done
+
+        priorities = np.zeros((self.size, self.num_agents), dtype=np.float32)
+
+        if self.imitation:
+            for i in range(self.size):
+                reward = np.sum(self.rew_buf[i:self.size]*discounts[:self.size-i], axis=0)
+                q_val = np.max(self.q_buf[i], axis=1)
+                priorities[i] = np.abs(reward-q_val)
+            priorities = np.mean(priorities, axis=1)
+
+            self.priority_tree = SumTree(self.capacity, priorities)
+
+        else:
+            for i in range(self.size):
+                reward = self.rew_buf[i]+0.99*np.max(self.q_buf[i+1], axis=1)
+                q_val = np.max(self.q_buf[i], axis=1)
+                priorities[i] = np.abs(reward-q_val)
+            priorities = np.mean(priorities, axis=1)
+
+            self.priority_tree = SumTree(self.capacity, priorities)
+
+
+    def _sample_proportional(self, batch_size):
+        res = []
+        p_total = self.priority_tree.sum()
+
+        every_range_len = p_total / batch_size
+        for i in range(batch_size):
+            mass = random.random() * every_range_len + i * every_range_len
+            idx = self.priority_tree.find_prefixsum_idx(mass)
+
+            res.append(idx)
+            
+        return res
+
+    def sample(self, batch_size):
+        """Sample a batch of experiences"""
+        idxes = self._sample_proportional(batch_size)
+
+        samples_p = np.asarray([self.priority_tree[idx] for idx in idxes])
+        min_p = np.min(samples_p)
+        weights = np.power(samples_p/min_p, -self.beta)
+        weights = torch.from_numpy(weights.astype('float32'))
+        weights = weights.unsqueeze(1).to(self.device)
+        encoded_sample = self._encode_sample(idxes)
 
         return encoded_sample + (weights, idxes)
 

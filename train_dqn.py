@@ -42,8 +42,8 @@ def learn(  env=Environment(), training_timesteps=config.training_timesteps, loa
     if load_model is not None:
         qnet.load_state_dict(torch.load(load_model))
 
-    optimizer = Adam(qnet.parameters(), lr=4e-4)
-    scheduler = lr_scheduler.StepLR(optimizer, 100000, gamma=0.5)
+    optimizer = Adam(qnet.parameters(), lr=2e-4)
+    scheduler = lr_scheduler.StepLR(optimizer, 112500, gamma=0.5)
     # scaler = amp.GradScaler()
 
     # create target network
