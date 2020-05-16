@@ -94,11 +94,11 @@ class ReplayBuffer:
 
         self.num_agents = config.num_agents
         self.obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.bool)
-        self.pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.uint8)
+        self.pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
         self.act_buf = np.zeros((size, self.num_agents), dtype=np.uint8)
         self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
         self.next_obs_buf = np.zeros((size, self.num_agents, 2, 9, 9), dtype=np.bool)
-        self.next_pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.uint8)
+        self.next_pos_buf = np.zeros((size, self.num_agents, 4), dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.bool)
         self.imitat_buf = np.zeros(size, dtype=np.bool)
         self.step_buf = np.zeros(size, dtype=np.uint16)
