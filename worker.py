@@ -2,6 +2,7 @@ import ray
 import time
 import random
 import torch
+import torch.nn as nn
 import numpy as np
 from copy import deepcopy
 
@@ -177,9 +178,7 @@ class Learner:
                 loss.backward()
                 # scaler.scale(loss).backward()
 
-                if grad_norm is not None:
-                    # scaler.unscale_(optimizer)
-                    nn.utils.clip_grad_norm_(self.model.parameters(), grad_norm)
+                nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
                 optimizer.step()
                 # scaler.step(optimizer)
