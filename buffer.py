@@ -369,7 +369,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 
 class LocalBuffer:
-    def __init__(self, init_obs_pos, imitation:bool, device, size=config.max_steps, alpha=config.prioritized_replay_alpha, beta=config.prioritized_replay_beta):
+    def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps, alpha=config.prioritized_replay_alpha, beta=config.prioritized_replay_beta):
         """
         Prioritized Replay buffer for each actor
 
@@ -388,7 +388,6 @@ class LocalBuffer:
 
         self.capacity = size
         self.size = 0
-        self.device = device
         self.imitation = imitation
 
         self.obs_buf[0], self.pos_buf[0] = init_obs_pos
@@ -404,11 +403,9 @@ class LocalBuffer:
     def priority(self):
         return self.priority
 
-    def add(self, args):
+    def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
 
         assert self.size < self.capacity
-
-        actions, reward, next_obs_pos, q_val = args
 
         self.act_buf[self.size] = actions
         self.rew_buf[self.size] = reward
@@ -417,12 +414,9 @@ class LocalBuffer:
 
         self.size += 1
 
-    def finish(self, last_q_val):
-        # last q value is all zero if done
-
-        self.q_buf[self.size] = last_q_val
-
-        if np.all(last_q_val==0):
+    def finish(self, last_q_val=None):
+        # last q value is None if done
+        if last_q_val is None:
             self.done = True
         else:
             self.done = False
