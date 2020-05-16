@@ -129,31 +129,6 @@ class Network(nn.Module):
             elif isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
 
-    def forward(self, obs, pos):
-
-        if obs.dim() == 5:
-            batch_size = obs.size(0)
-            
-            obs = obs.view(-1, self.obs_dim, 9, 9)
-            pos = pos.view(-1, self.pos_dim)
-        else:
-            batch_size = 1
-
-        obs_latent = self.obs_encoder(obs)
-        pos_latent = self.pos_encoder(pos)
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
-
-        adv_val = self.adv(latent)
-        state_val = self.state(latent)
-
-        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-
-        if batch_size != 1:
-            q_val = q_val.view(batch_size, -1, 5)
-
-        return q_val
-
     def step(self, obs, pos):
         
         obs_latent = self.obs_encoder(obs)
