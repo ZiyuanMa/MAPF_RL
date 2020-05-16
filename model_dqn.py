@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import log_softmax
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 import config
 
 # class ResBlock(nn.Module):
@@ -163,6 +163,7 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
         latent = latent.unsqueeze(1)
+        self.recurrent.flatten_parameters()
         if self.hidden is None:
             _, self.hidden = self.recurrent(latent)
         else:
@@ -188,10 +189,10 @@ class Network(nn.Module):
         self.hidden = None
 
     def bootstrap(self, obs, pos, steps):
-        batch_size = obs.size(0)
-        seq_length = obs.size(1)
-        obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
-        pos = pos.contiguous().view(-1, self.pos_dim)
+        # batch_size = obs.size(0)
+        # seq_length = obs.size(1)
+        # obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
+        # pos = pos.contiguous().view(-1, self.pos_dim)
 
 
         obs_latent = self.obs_encoder(obs)
@@ -200,7 +201,17 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
-        latent = latent.view(batch_size, seq_length, self.latent_dim)
+        # pad_latent = torch.zeros(steps.size(0), steps.max().item(), self.latent_dim).to(torch.device('cuda'))
+
+        # start = 0
+        # for i, seq_len in enumerate(steps):
+        #     seq_len = seq_len.item()
+        #     pad_latent[i, :seq_len] = latent[start:start+seq_len]
+        #     start += seq_len
+        # latent = pad_latent
+
+        latent = latent.split(steps)
+        latent = pad_sequence(latent, batch_first=True)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 

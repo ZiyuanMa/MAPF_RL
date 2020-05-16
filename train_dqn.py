@@ -160,9 +160,10 @@ def _generate(env, qnet, device,
 
     """ Generate training batch sample """
     explore_delta = (explore_start_eps-exploration_final_eps) / training_timesteps * 2
-    noise_scale = 0.01
     done = False
 
+    eval_qnet = deepcopy(qnet)
+    eval_qnet.eval()
 
     if distributional:
         vrange = torch.linspace(-5, 5, 51).to(device)
@@ -172,7 +173,6 @@ def _generate(env, qnet, device,
     worker = Search(Environment(), q)
     worker.daemon = True
     worker.start()
-
 
     # if use imitation learning
     imitation = True if random.random() < imitation_ratio else False
@@ -195,47 +195,16 @@ def _generate(env, qnet, device,
             # sample action
             with torch.no_grad():
 
-                q_val = qnet.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
+                q_val = eval_qnet.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
                 if distributional:
                     q_val = (q_val.exp() * vrange).sum(2)
 
                 actions = q_val.argmax(1).cpu().tolist()
 
-                if noisy_param:
-                    q_dict = deepcopy(qnet.state_dict())
-                    for _, m in qnet.adv.named_modules():
-                        if isinstance(m, nn.Linear):
-                            std = torch.empty_like(m.weight).fill_(noise_scale)
-                            m.weight.data.add_(torch.normal(0, std).to(device))
-                            std = torch.empty_like(m.bias).fill_(noise_scale)
-                            m.bias.data.add_(torch.normal(0, std).to(device))
-
-                    for _, m in qnet.state.named_modules():
-                        if isinstance(m, nn.Linear):
-                            std = torch.empty_like(m.weight).fill_(noise_scale)
-                            m.weight.data.add_(torch.normal(0, std).to(device))
-                            std = torch.empty_like(m.bias).fill_(noise_scale)
-                            m.bias.data.add_(torch.normal(0, std).to(device))
-
-                    q_perturb = qnet.step(torch.from_numpy(obs_pos[0]).to(device), torch.from_numpy(obs_pos[1]).to(device))
-                    kl_perturb = ((log_softmax(q_val, 1) - log_softmax(q_perturb, 1)) *
-                                softmax(q_val, 1)).sum(-1).mean()
-                    kl_explore = -math.log(1 - epsilon + epsilon / 5)
-                    if kl_perturb < kl_explore:
-                        noise_scale *= 1.01
-                    else:
-                        noise_scale /= 1.01
-                    qnet.load_state_dict(q_dict)
-
-                    actions = q_perturb.argmax(1).cpu().tolist()
-                    for i in range(len(actions)):
-                        if random.random() < epsilon:
-                            actions[i] = np.random.randint(0, 5)
-                else:
-                    for i in range(len(actions)):
-                        if random.random() < epsilon:
-                            actions[i] = np.random.randint(0, 5)
+                for i in range(len(actions)):
+                    if random.random() < epsilon:
+                        actions[i] = np.random.randint(0, 5)
 
         # take action in env
         next_obs_pos, r, done, info = env.step(actions)
@@ -252,7 +221,7 @@ def _generate(env, qnet, device,
         else:
             
             done = False
-            qnet.reset()
+            eval_qnet.reset()
 
             imitation = True if random.random() < imitation_ratio else False
             if imitation:
@@ -260,6 +229,8 @@ def _generate(env, qnet, device,
                 env.load(map, agents_pos, goals_pos)
                 obs_pos = env.observe()
             else:
+                eval_qnet.load_state_dict(qnet.state_dict())
+
                 obs_pos = env.reset()
 
         if epsilon > exploration_final_eps:
