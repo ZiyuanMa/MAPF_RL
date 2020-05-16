@@ -82,14 +82,16 @@ class Network(nn.Module):
         self.distributional = distributional
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
+            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(cnn_channel),
             nn.ReLU(True),
 
-            ResBlock(cnn_channel, type='cnn'),
+            ResBlock(cnn_channel, type='cnn', bn=True),
 
-            ResBlock(cnn_channel, type='cnn'),
+            ResBlock(cnn_channel, type='cnn', bn=True),
 
-            nn.Conv2d(cnn_channel, 8, 1, 1),
+            nn.Conv2d(cnn_channel, 8, 1, 1, bias=False),
+            nn.BatchNorm2d(8),
             nn.ReLU(True),
 
             nn.Flatten(),
