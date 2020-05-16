@@ -20,18 +20,21 @@ pos_shape = (4)
 
 # basic training setting
 training_timesteps = 1250000
-save_interval=50000
+save_interval=20000
 gamma=0.99
-batch_size_dqn=32
+batch_size=64
 train_freq=4
 learning_starts=50000
-target_network_update_freq=2500
+target_network_update_freq=5000
 buffer_size=131072
 save_path='./models'
 max_steps = 256
-bt_steps = 16
+bt_steps = 32
 dtype = 'float32'
 load_model = None
+
+local_buffer_size = max_steps
+global_buffer_size = 2048
 
 # gradient norm clipping
 grad_norm_dqn=40
