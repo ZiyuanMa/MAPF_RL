@@ -81,7 +81,7 @@ discounts = np.array([[0.99**i] for i in range(config.max_steps)])
 #         self.size += 1
 
 class SumTree:
-    def __init__(self, capacity, priorities):
+    def __init__(self, capacity, priorities=None):
 
         layer = 1
         while 2**(layer-1) < capacity:
@@ -91,15 +91,17 @@ class SumTree:
         self.capacity = capacity
         self.size = len(priorities)
 
-        idx = np.array([ self.capacity-1-i for i in range(len(priorities)) ], dtype=np.int)
-        self.tree[idx] = priorities
+        if priorities is not None:
+            idx = np.array([ self.capacity-1-i for i in range(len(priorities)) ], dtype=np.int)
+            self.tree[idx] = priorities
 
-        for _ in range(layer-1):
-            idx = (idx-1) // 2
-            idx = np.unique(idx)
-            self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
-        
-        self.sum()
+            for _ in range(layer-1):
+                idx = (idx-1) // 2
+                idx = np.unique(idx)
+                self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
+            
+            # check
+            self.sum()
 
 
     def sum(self):
@@ -127,7 +129,7 @@ class SumTree:
                 prefixsum -= self.tree[2*idx + 1]
                 idx = 2*idx + 2
 
-        return idx - self.capacity + 1
+        return idx-self.capacity+1, prefixsum
 
     def update(self, idx:int, priority:float):
         assert 0 <= idx < self.capacity
@@ -140,7 +142,18 @@ class SumTree:
         while idx >= 0:
             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
             idx = (idx-1) // 2
+        
+    def batch_update(self, idxes:np.ndarray, priorities:np.ndarray):
+        idxes += self.capacity-1
+        self.tree[idxes] = priorities
 
+        while len(idxes) > 1:
+            idxes = (idxes-1) // 2
+            idxes = np.unique(idxes)
+            self.tree[idxes] = self.tree[2*idxes+1] + self.tree[2*idxes+2]
+        
+        # check
+        self.sum()
 
 
 
@@ -355,13 +368,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 
 
-class LocalBuffer(ReplayBuffer):
+class LocalBuffer:
     def __init__(self, init_obs_pos, imitation:bool, device, size=config.max_steps, alpha=config.prioritized_replay_alpha, beta=config.prioritized_replay_beta):
         """
         Prioritized Replay buffer for each actor
 
         """
-        super(LocalBuffer, self).__init__(size, device)
         assert alpha >= 0
         self.alpha = alpha
         self.beta = beta
@@ -387,6 +399,10 @@ class LocalBuffer(ReplayBuffer):
     
     def __len__(self):
         return self.size
+
+    @property
+    def priority(self):
+        return self.priority
 
     def add(self, args):
 
@@ -423,8 +439,6 @@ class LocalBuffer(ReplayBuffer):
                 priorities[i] = np.abs(reward-q_val)
             priorities = np.mean(priorities, axis=1)
 
-            self.priority_tree = SumTree(self.capacity, priorities)
-
         else:
             for i in range(self.size):
                 reward = self.rew_buf[i]+0.99*np.max(self.q_buf[i+1], axis=1)
@@ -432,91 +446,149 @@ class LocalBuffer(ReplayBuffer):
                 priorities[i] = np.abs(reward-q_val)
             priorities = np.mean(priorities, axis=1)
 
-            self.priority_tree = SumTree(self.capacity, priorities)
+        self.priority_tree = SumTree(self.capacity, priorities)
+        self.priority = self.priority_tree.sum()
+        
+    def sample(self, prefixsum):
+
+        idx, _ = self.priority_tree.find_prefixsum_idx(prefixsum)
+
+        priority = self.priority_tree[idx]
+
+        encoded_sample = self._encode_sample(idx)
+
+        return encoded_sample + (idx, priority)
+
+    def update_priority(self, idx, priority):
+        assert 0 <= idx < self.size
+
+        self.priority_tree.update(idx, priority**self.alpha)
+        self.priority = self.priority_tree.sum()
 
 
-    def _sample_proportional(self, batch_size):
-        res = []
-        p_total = self.priority_tree.sum()
+    def _encode_sample(self, idx):
 
-        every_range_len = p_total / batch_size
-        for i in range(batch_size):
-            mass = random.random() * every_range_len + i * every_range_len
-            idx = self.priority_tree.find_prefixsum_idx(mass)
-
-            res.append(idx)
-            
-        return res
-
-    def sample(self, batch_size):
-        """Sample a batch of experiences"""
-        idxes = self._sample_proportional(batch_size)
-
-        samples_p = np.asarray([self.priority_tree[idx] for idx in idxes])
-        min_p = np.min(samples_p)
-        weights = np.power(samples_p/min_p, -self.beta)
-        weights = torch.from_numpy(weights.astype('float32'))
-        weights = weights.unsqueeze(1).to(self.device)
-        encoded_sample = self._encode_sample(idxes)
-
-        return encoded_sample + (weights, idxes)
-
-    def update_priorities(self, idxes, priorities):
-        """Update priorities of sampled transitions"""
-
-        for idx, priority in zip(idxes, priorities):
-            assert (priority > 0).all()
-            assert 0 <= idx < self.size
-
-            self.priority_tree.update(idx, priority**self.alpha)
-
-            self.max_priority = max(self.max_priority, priority)
-
-    def encode_sample(self, idx):
-        forward = 1
         if self.imitation:
             # use Monte Carlo method if it's imitation
             forward = self.size - idx
             reward = np.sum(self.rew_buf[idx:self.size+1]*discounts[:self.size+1-idx], axis=0)
-
         else:
-
+            # self play
             forward = 1
             reward = self.rew_buf[idx]
 
-        bt_steps = min(idx, config.bt_steps)
-
+        # obs and pos
+        bt_steps = min(idx+1, config.bt_steps)
         obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
         pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
 
+        # next obs and next pos
+        next_bt_steps = min(idx+2, config.bt_steps)
+        next_obs = np.swapaxes(self.obs_buf[idx+2-next_bt_steps:idx+2], 0, 1)
+        next_pos = np.swapaxes(self.pos_buf[idx+2-next_bt_steps:idx+2], 0, 1)
 
-        if bt_steps < config.bt_steps:
-            pad_len = config.bt_steps-bt_steps
-            obs = np.pad(obs, ((0,0),(0,pad_len),(0,0),(0,0),(0,0)))
-            pos = np.pad(pos, ((0,0),(0,pad_len),(0,0)))
+        # define other part
+        done = [ self.done for _ in range(self.num_agents) ]
+        steps = [ forward for _ in range(self.num_agents) ]
+        bt_steps = [ bt_steps for _ in range(self.num_agents) ]
+        next_bt_steps = [ next_bt_steps for _ in range(self.num_agents) ]
 
-            next_bt_steps = bt_steps+1
-
-            next_obs = np.copy(obs)
-            next_obs[:,bt_steps] = self.obs_buf[idx+1]
-
-            next_pos = np.copy(pos)
-            next_pos[:,bt_steps] = self.pos_buf[idx+1]
-
-        else:
-            next_bt_steps = bt_steps
-            next_obs = np.concatenate((obs[:,1:], np.expand_dims(self.next_obs_buf[idx], axis=1)), axis=1)
-            next_pos = np.concatenate((pos[:,1:], np.expand_dims(self.next_pos_buf[idx], axis=1)), axis=1)
+        return obs, pos, self.act_buf[idx].tolist(), reward.tolist(), next_obs, next_pos, done, steps, bt_steps, next_bt_steps
 
 
-        b_obs.append(obs)
-        b_pos.append(pos)
-        b_action += self.act_buf[idx].tolist()
-        b_reward += reward.tolist()
-        b_next_obs.append(next_obs)
-        b_next_pos.append(next_pos)
 
-        b_done += [ self.done_buf[(idx+forward-1)%self.capacity] for _ in range(self.num_agents) ]
-        b_steps += [ forward for _ in range(self.num_agents) ]
-        b_bt_steps += [ bt_steps for _ in range(self.num_agents) ]
-        b_next_bt_steps += [ next_bt_steps for _ in range(self.num_agents) ]
+class GlobalBuffer:
+    def __init__(self, capacity, device, beta=config.prioritized_replay_beta):
+        self.capacity = capacity
+        self.size = 0
+        self.ptr = 0
+        self.buffer = [ None for _ in range(capacity) ]
+        self.priority_tree = SumTree(capacity)
+        self.beta = beta
+        self.device = device
+
+    def __len__(self):
+        return self.size
+
+    def add(self, buffer:LocalBuffer):
+        
+        # update buffer size
+        if self.buffer[self.ptr] is not None:
+            self.size -= len(self.buffer[self.ptr])
+        self.size -= len(buffer)
+
+        self.buffer[self.ptr] = buffer
+
+        self.priority_tree.update(self.ptr, buffer.priority)
+
+        self.ptr = (self.ptr+1) % self.capacity
+
+    def sample_batch(self, batch_size):
+        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
+        idxes, priorities = [], []
+        total_p = self.priority_tree.sum()
+
+        every_range_len = total_p / batch_size
+        for i in range(batch_size):
+            global_prefixsum = random.random() * every_range_len + i * every_range_len
+            global_idx, local_prefixsum = self.priority_tree.find_prefixsum_idx(global_prefixsum)
+            ret = self.buffer[global_idx].sample(local_prefixsum)
+            obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps, local_idx, priority = ret   
+            
+            b_obs.append(obs)
+            b_pos.append(pos)
+            b_action += action
+            b_reward += reward
+            b_next_obs.append(next_obs)
+            b_next_pos.append(next_pos)
+
+            b_done += done
+            b_steps += steps
+            b_bt_steps += bt_steps
+            b_next_bt_steps += next_bt_steps
+
+            idxes.append(global_idx*config.max_steps+local_idx)
+            priorities.append(priority)
+
+        priorities = np.array(priorities, dtype=np.float32)
+        min_p = np.min(priorities)
+        weights = np.power(priorities/min_p, -self.beta)
+
+        res = (
+            torch.from_numpy(np.concatenate(b_obs).astype(np.float32)).to(self.device),
+            torch.from_numpy(np.concatenate(b_pos).astype(np.float32)).to(self.device),
+            torch.from_numpy(b_action.astype(np.long)).unsqueeze(1).to(self.device),
+            torch.from_numpy(b_reward).unsqueeze(1).to(self.device),
+            torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)).to(self.device),
+            torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)).to(self.device),
+
+            torch.FloatTensor(b_done).unsqueeze(1).to(self.device),
+            torch.FloatTensor(b_steps).unsqueeze(1).to(self.device),
+            torch.IntTensor(b_bt_steps).to(self.device),
+            torch.IntTensor(b_next_bt_steps).to(self.device),
+
+            idxes,
+            torch.from_numpy(weights).unsqueeze(1).to(self.device)
+        )
+        return res
+
+    def update_priorities(self, idxes:List[int], priorities:List[float]):
+        """Update priorities of sampled transitions"""
+
+        idxes = np.asarray(idxes)
+        global_idxes = idxes // config.max_steps
+        local_idxes = idxes % config.max_steps
+
+        for global_idx, local_idx, priority in zip(global_idxes, local_idxes, priorities):
+            assert priority > 0
+            assert 0 <= local_idx < self.size
+
+            self.buffer[global_idx].update_priority(local_idx, priority)
+
+        global_idxes = np.unique(global_idxes)
+        new_p = []
+        for global_idx in global_idxes:
+            new_p.append(self.buffer[global_idx].priority)
+
+        new_p = np.asarray(new_p)
+        self.priority_tree.batch_update(global_idxes, new_p)
