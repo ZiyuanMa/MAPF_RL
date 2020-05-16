@@ -182,7 +182,7 @@ def _generate(env, qnet, device,
         obs_pos = env.observe()
     else:
         obs_pos = env.reset()
-
+    
 
     epsilon = explore_start_eps
     for _ in range(1, training_timesteps + 1):
