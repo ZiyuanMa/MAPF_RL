@@ -12,74 +12,6 @@ pos_pad = np.zeros((config.pos_dim), dtype=config.dtype)
 
 discounts = np.array([[0.99**i] for i in range(config.max_steps)])
 
-# class SumTree:
-#     def __init__(self, capacity):
-
-#         layer = 1
-#         while 2**(layer-1) < capacity:
-#             layer += 1
-#         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
-#         self.tree = np.zeros(2**layer-1)
-#         self.capacity = capacity
-#         self.size = 0
-#         self.ptr = capacity-1
-
-#     def sum(self):
-#         assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
-#         return self.tree[0]
-
-#     def min(self):
-#         if self.size < self.capacity:
-#             return np.min(self.tree[-self.capacity:-self.capacity+self.size])
-#         else:
-#             return np.min(self.tree[-self.capacity:])
-
-#     def __getitem__(self, idx:int):
-#         assert 0 <= idx < self.capacity
-
-#         return self.tree[self.capacity-1+idx]
-
-#     def find_prefixsum_idx(self, prefixsum:float):
-#         """
-#         Find the highest index `i` in the array such that
-#             sum(arr[0] + arr[1] + ... + arr[i]) <= prefixsum
-#         """
-        
-#         assert 0 <= prefixsum <= self.sum() + 1e-5
-
-#         idx = 0
-#         while idx < self.capacity-1:  # while non-leaf
-#             if self.tree[2*idx + 1] > prefixsum:
-#                 idx = 2*idx + 1
-#             else:
-#                 prefixsum -= self.tree[2*idx + 1]
-#                 idx = 2*idx + 2
-
-#         return idx - self.capacity + 1
-
-#     def update(self, idx:int, priority:float):
-#         assert 0 <= idx < self.capacity
-
-#         idx += self.capacity-1
-
-#         self.tree[idx] = priority
-
-#         idx = (idx-1) // 2
-#         while idx >= 0:
-#             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
-#             idx = (idx-1) // 2
-
-#     def add(self, priority:float):
-#         self.tree[self.ptr] = priority
-
-#         idx = (self.ptr-1) // 2
-#         while idx >= 0:
-#             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
-#             idx = (idx-1) // 2
-
-#         self.ptr = self.ptr+1 if self.ptr < 2*self.capacity-2 else self.capacity-1
-#         self.size += 1
-
 class SumTree:
     def __init__(self, capacity, priorities=None):
 
@@ -89,10 +21,13 @@ class SumTree:
         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
         self.tree = np.zeros(2**layer-1)
         self.capacity = capacity
-        self.size = len(priorities)
+        if priorities is not None:
+            self.size = len(priorities)
+        else:
+            self.size = 0
 
         if priorities is not None:
-            idx = np.array([ self.capacity-1-i for i in range(len(priorities)) ], dtype=np.int)
+            idx = np.array([ self.capacity-1+i for i in range(len(priorities)) ], dtype=np.int)
             self.tree[idx] = priorities
 
             for _ in range(layer-1):
@@ -295,75 +230,6 @@ class ReplayBuffer:
 
         return self._encode_sample(idxes)
 
-class PrioritizedReplayBuffer(ReplayBuffer):
-    def __init__(self, size, device, alpha, beta):
-        """Create Prioritized Replay buffer.
-
-        Parameters
-        ----------
-        size: int
-            Max number of transitions to store in the buffer. When the buffer
-            overflows the old memories are dropped.
-        alpha: float
-            how much prioritization is used
-            (0 - no prioritization, 1 - full prioritization)
-
-        See Also
-        --------
-        ReplayBuffer.__init__
-        """
-        super(PrioritizedReplayBuffer, self).__init__(size, device)
-        assert alpha >= 0
-        self.alpha = alpha
-
-        self.priority_tree = SumTree(size)
-        self.max_priority = 1.0
-        self.beta = beta
-
-    def add(self, *args, **kwargs):
-        """See ReplayBuffer.store_effect"""
-
-        super().add(*args, **kwargs)
-
-        self.priority_tree.add(self.max_priority**self.alpha)
-
-
-    def _sample_proportional(self, batch_size):
-        res = []
-        p_total = self.priority_tree.sum()
-
-        every_range_len = p_total / batch_size
-        for i in range(batch_size):
-            mass = random.random() * every_range_len + i * every_range_len
-            idx = self.priority_tree.find_prefixsum_idx(mass)
-
-            res.append(idx)
-            
-        return res
-
-    def sample(self, batch_size):
-        """Sample a batch of experiences"""
-        idxes = self._sample_proportional(batch_size)
-
-        samples_p = np.asarray([self.priority_tree[idx] for idx in idxes])
-        min_p = np.min(samples_p)
-        weights = np.power(samples_p/min_p, -self.beta)
-        weights = torch.from_numpy(weights.astype('float32'))
-        weights = weights.unsqueeze(1).to(self.device)
-        encoded_sample = self._encode_sample(idxes)
-
-        return encoded_sample + (weights, idxes)
-
-    def update_priorities(self, idxes, priorities):
-        """Update priorities of sampled transitions"""
-
-        for idx, priority in zip(idxes, priorities):
-            assert (priority > 0).all()
-            assert 0 <= idx < self.size
-
-            self.priority_tree.update(idx, priority**self.alpha)
-
-            self.max_priority = max(self.max_priority, priority)
 
 
 
@@ -381,7 +247,7 @@ class LocalBuffer:
         self.num_agents = init_obs_pos[0].shape[0]
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)
+        self.pos_buf = np.zeros((size+1, self.num_agents, 4), dtype=np.uint8)
         self.act_buf = np.zeros((size, self.num_agents), dtype=np.uint8)
         self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
         self.q_buf = np.zeros((size+1, self.num_agents, 5), dtype=np.float32)
@@ -391,17 +257,9 @@ class LocalBuffer:
         self.imitation = imitation
 
         self.obs_buf[0], self.pos_buf[0] = init_obs_pos
-
-    @property
-    def imitation(self):
-        return self.imitation
     
     def __len__(self):
         return self.size
-
-    @property
-    def priority(self):
-        return self.priority
 
     def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
 
@@ -422,7 +280,7 @@ class LocalBuffer:
             self.done = False
 
         if self.imitation:
-            assert self.done
+            assert self.done, 'size {}'.format(self.size)
 
         priorities = np.zeros((self.size, self.num_agents), dtype=np.float32)
 
@@ -474,12 +332,18 @@ class LocalBuffer:
         # obs and pos
         bt_steps = min(idx+1, config.bt_steps)
         obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
+        obs = obs.reshape(self.num_agents*bt_steps, *config.obs_shape)
+
         pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
+        pos = pos.reshape(self.num_agents*bt_steps, 4)
 
         # next obs and next pos
         next_bt_steps = min(idx+2, config.bt_steps)
         next_obs = np.swapaxes(self.obs_buf[idx+2-next_bt_steps:idx+2], 0, 1)
+        next_obs = next_obs.reshape(self.num_agents*next_bt_steps, *config.obs_shape)
+
         next_pos = np.swapaxes(self.pos_buf[idx+2-next_bt_steps:idx+2], 0, 1)
+        next_pos = next_pos.reshape(self.num_agents*next_bt_steps, 4)
 
         # define other part
         done = [ self.done for _ in range(self.num_agents) ]

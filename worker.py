@@ -15,16 +15,16 @@ from environment import Environment
 from buffer import SumTree, LocalBuffer
 from search import find_path
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=1, num_gpus=0.1)
 class GlobalBuffer:
-    def __init__(self, capacity, device, beta=config.prioritized_replay_beta):
+    def __init__(self, capacity, beta=config.prioritized_replay_beta):
         self.capacity = capacity
         self.size = 0
         self.ptr = 0
         self.buffer = [ None for _ in range(capacity) ]
         self.priority_tree = SumTree(capacity)
         self.beta = beta
-        self.device = device
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def __len__(self):
         return self.size
@@ -34,7 +34,7 @@ class GlobalBuffer:
         # update buffer size
         if self.buffer[self.ptr] is not None:
             self.size -= len(self.buffer[self.ptr])
-        self.size -= len(buffer)
+        self.size += len(buffer)
 
         self.buffer[self.ptr] = buffer
 
@@ -43,6 +43,9 @@ class GlobalBuffer:
         self.ptr = (self.ptr+1) % self.capacity
 
     def sample_batch(self, batch_size):
+        if len(self) < config.learning_starts:
+            return None
+
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
         idxes, priorities = [], []
         total_p = self.priority_tree.sum()
@@ -76,15 +79,15 @@ class GlobalBuffer:
         res = (
             torch.from_numpy(np.concatenate(b_obs).astype(np.float32)).to(self.device),
             torch.from_numpy(np.concatenate(b_pos).astype(np.float32)).to(self.device),
-            torch.from_numpy(b_action.astype(np.long)).unsqueeze(1).to(self.device),
-            torch.from_numpy(b_reward).unsqueeze(1).to(self.device),
+            torch.LongTensor(b_action).unsqueeze(1).to(self.device),
+            torch.FloatTensor(b_reward).unsqueeze(1).to(self.device),
             torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)).to(self.device),
             torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)).to(self.device),
 
             torch.FloatTensor(b_done).unsqueeze(1).to(self.device),
             torch.FloatTensor(b_steps).unsqueeze(1).to(self.device),
-            torch.IntTensor(b_bt_steps).to(self.device),
-            torch.IntTensor(b_next_bt_steps).to(self.device),
+            b_bt_steps,
+            b_next_bt_steps,
 
             idxes,
             torch.from_numpy(weights).unsqueeze(1).to(self.device)
@@ -112,7 +115,7 @@ class GlobalBuffer:
         new_p = np.asarray(new_p)
         self.priority_tree.batch_update(global_idxes, new_p)
 
-@ray.remote(num_cpus=1, num_gpus=1)
+@ray.remote(num_cpus=1, num_gpus=0.9)
 class Learner:
     def __init__(self, buffer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -121,9 +124,13 @@ class Learner:
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=2.5e-4)
         self.buffer = buffer
+        self.counter = 0
     
     def get_weights(self):
-        return self.model.state_dict()
+        state_dict = self.model.state_dict()
+        for k, v in state_dict.items():
+            state_dict[k] = v.cpu()
+        return state_dict
 
     def run(self):
 
@@ -136,10 +143,10 @@ class Learner:
 
         start_ts = time.time()
 
-        data = self.buffer.sample_batch(config.batch_size)
+        data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
         while data is None:
-            time.sleep(1)
-            data = self.buffer.sample_batch(config.batch_size)
+            print('current size: {}'.format(ray.get(self.buffer.__len__.remote())))
+            return None
 
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, *extra = data
 
@@ -177,24 +184,25 @@ class Learner:
         # scheduler.step()
 
 
-        self.buffer.update_priorities(extra[1], priorities)
+        self.buffer.update_priorities.remote(extra[1], priorities)
 
         # update target net and log
-        if n_iter % config.target_network_update_freq == 0:
+        if self.counter % config.target_network_update_freq == 0:
             self.tar_model.load_state_dict(self.model.state_dict())
 
-            print('{} Iter {} {}'.format('=' * 10, n_iter, '=' * 10))
+            print('{} Iter {} {}'.format('=' * 10, self.counter, '=' * 10))
             fps = int(config.target_network_update_freq / (time.time() - start_ts))
             start_ts = time.time()
             print('FPS {}'.format(fps))
 
-            if n_iter > 50000:
+            if self.counter > 50000:
                 print('vloss: {:.6f}'.format(loss.item()))
             
         # save model
-        if config.save_interval and n_iter % config.save_interval == 0:
-            torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(n_iter)))
+        if config.save_interval and self.counter % config.save_interval == 0:
+            torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(self.counter)))
 
+        return 1
 
 @ray.remote(num_cpus=1)
 class Actor:
@@ -239,6 +247,10 @@ class Actor:
             if imitation:
 
                 actions = imitation_actions.pop(0)
+                with torch.no_grad():
+                    q_val = self.model.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
+                    if self.distributional:
+                            q_val = (q_val.exp() * vrange).sum(2)
 
             else:
                 # sample action
@@ -249,7 +261,7 @@ class Actor:
                     if self.distributional:
                         q_val = (q_val.exp() * vrange).sum(2)
 
-                    actions = q_val.argmax(1).cpu().tolist()
+                    actions = q_val.argmax(1).tolist()
 
                     for i in range(len(actions)):
                         if random.random() < self.epsilon:
@@ -276,28 +288,28 @@ class Actor:
                     if self.distributional:
                         q_val = (q_val.exp() * vrange).sum(2)
                     buffer.finish(q_val)
-                self.learner.add_buffer.remote(buffer)
+                self.buffer.add.remote(buffer)
+                # print('actor {} sent buffer'.format(self.id))
 
                 done = False
                 self.model.reset()
+                obs_pos = self.env.reset()
 
                 imitation = True if random.random() < self.imitation_ratio else False
                 if imitation:
                     imitation_actions = find_path(self.env)
                     while imitation_actions is None:
-                        self.env.reset()
+                        obs_pos = self.env.reset()
                         imitation_actions = find_path(self.env)
 
-                    obs_pos = self.env.observe()
                     buffer = LocalBuffer(obs_pos, True)
                 else:
                     # load weights from learner
                     weights = ray.get(self.learner.get_weights.remote())
                     self.model.load_state_dict(weights)
 
-                    obs_pos = self.env.reset()
                     buffer = LocalBuffer(obs_pos, False)
 
-            return self.id
+        return self.id
         
     
