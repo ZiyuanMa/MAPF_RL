@@ -8,6 +8,8 @@ from torch.optim import Adam, lr_scheduler
 import numpy as np
 from copy import deepcopy
 from typing import List
+import threading
+import asyncio
 
 import config
 from model_dqn import Network
@@ -15,7 +17,7 @@ from environment import Environment
 from buffer import SumTree, LocalBuffer
 from search import find_path
 
-@ray.remote(num_cpus=1, num_gpus=0.1)
+@ray.remote(num_cpus=1)
 class GlobalBuffer:
     def __init__(self, capacity, beta=config.prioritized_replay_beta):
         self.capacity = capacity
@@ -77,20 +79,20 @@ class GlobalBuffer:
         weights = np.power(priorities/min_p, -self.beta)
 
         res = (
-            torch.from_numpy(np.concatenate(b_obs).astype(np.float32)).to(self.device),
-            torch.from_numpy(np.concatenate(b_pos).astype(np.float32)).to(self.device),
-            torch.LongTensor(b_action).unsqueeze(1).to(self.device),
-            torch.FloatTensor(b_reward).unsqueeze(1).to(self.device),
-            torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)).to(self.device),
-            torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)).to(self.device),
+            torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
+            torch.from_numpy(np.concatenate(b_pos).astype(np.float32)),
+            torch.LongTensor(b_action).unsqueeze(1),
+            torch.FloatTensor(b_reward).unsqueeze(1),
+            torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)),
+            torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)),
 
-            torch.FloatTensor(b_done).unsqueeze(1).to(self.device),
-            torch.FloatTensor(b_steps).unsqueeze(1).to(self.device),
+            torch.FloatTensor(b_done).unsqueeze(1),
+            torch.FloatTensor(b_steps).unsqueeze(1),
             b_bt_steps,
             b_next_bt_steps,
 
             idxes,
-            torch.from_numpy(weights).unsqueeze(1).to(self.device)
+            torch.from_numpy(weights).unsqueeze(1)
         )
         return res
 
@@ -115,7 +117,7 @@ class GlobalBuffer:
         new_p = np.asarray(new_p)
         self.priority_tree.batch_update(global_idxes, new_p)
 
-@ray.remote(num_cpus=1, num_gpus=0.9)
+@ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
     def __init__(self, buffer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -124,13 +126,19 @@ class Learner:
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=2.5e-4)
         self.buffer = buffer
-        self.counter = 0
+        self.counter = 1
+
     
     def get_weights(self):
         state_dict = self.model.state_dict()
         for k, v in state_dict.items():
             state_dict[k] = v.cpu()
         return state_dict
+
+    def train(self):
+        self.learning_thread = threading.Thread(target=self.run, daemon=True)
+        self.learning_thread.start()
+        return self.learning_thread
 
     def run(self):
 
@@ -140,64 +148,70 @@ class Learner:
         delta_z = 10 / 50
         z_i = torch.linspace(-5, 5, 51).to(self.device)
 
-
-        start_ts = time.time()
-
-        data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
-        while data is None:
-            print('current size: {}'.format(ray.get(self.buffer.__len__.remote())))
-            return None
-
-        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, *extra = data
-
-        with torch.no_grad():
-            b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
-            b_next_action = (b_next_dist * z_i).sum(-1).argmax(1)
-            b_tzj = ((0.99**b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
-            b_i = (b_tzj - min_value) / delta_z
-            b_l = b_i.floor()
-            b_u = b_i.ceil()
-            b_m = torch.zeros(config.batch_size*config.num_agents, atom_num).to(self.device)
-            temp = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
-            b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
-            b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
-
-        b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
-
-        kl_error = (-b_q*b_m).sum(dim=1).reshape(config.batch_size, config.num_agents).mean(dim=1)
-        # kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
-        # use kl error as priorities as proposed by Rainbow
-        priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
-        loss = kl_error.mean()
-
-        self.optimizer.zero_grad()
-
-        loss.backward()
-        # scaler.scale(loss).backward()
-
-        nn.utils.clip_grad_norm_(self.model.parameters(), 40)
-
-        self.optimizer.step()
-        # scaler.step(optimizer)
-        # scaler.update()
-
-        # scheduler.step()
-
-
-        self.buffer.update_priorities.remote(extra[1], priorities)
-
-        # update target net and log
-        if self.counter % config.target_network_update_freq == 0:
-            self.tar_model.load_state_dict(self.model.state_dict())
-
-            print('{} Iter {} {}'.format('=' * 10, self.counter, '=' * 10))
-            fps = int(config.target_network_update_freq / (time.time() - start_ts))
+        for _ in range(20):
             start_ts = time.time()
-            print('FPS {}'.format(fps))
 
-            if self.counter > 50000:
-                print('vloss: {:.6f}'.format(loss.item()))
-            
+            data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
+            while data is None:
+                print('current size: {}'.format(ray.get(self.buffer.__len__.remote())))
+                time.sleep(2)
+                data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
+
+                # return None
+
+            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, idxes, weights = data
+            b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
+            b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
+
+            with torch.no_grad():
+                b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
+                b_next_action = (b_next_dist * z_i).sum(-1).argmax(1)
+                b_tzj = ((0.99**b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
+                b_i = (b_tzj - min_value) / delta_z
+                b_l = b_i.floor()
+                b_u = b_i.ceil()
+                b_m = torch.zeros(config.batch_size*config.num_agents, atom_num).to(self.device)
+                temp = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
+                b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
+                b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
+
+            b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
+
+            kl_error = (-b_q*b_m).sum(dim=1).reshape(config.batch_size, config.num_agents).mean(dim=1)
+            # use kl error as priorities as proposed by Rainbow
+            priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
+            loss = kl_error.mean()
+
+            self.optimizer.zero_grad()
+
+            loss.backward()
+            # scaler.scale(loss).backward()
+
+            nn.utils.clip_grad_norm_(self.model.parameters(), 40)
+
+            self.optimizer.step()
+            # scaler.step(optimizer)
+            # scaler.update()
+
+            # scheduler.step()
+
+
+            self.buffer.update_priorities.remote(idxes, priorities)
+
+            # update target net and log
+            if self.counter % config.target_network_update_freq == 0:
+                self.tar_model.load_state_dict(self.model.state_dict())
+
+                print('{} Iter {} {}'.format('=' * 10, self.counter, '=' * 10))
+                fps = int(config.target_network_update_freq / (time.time() - start_ts))
+                start_ts = time.time()
+                print('FPS {}'.format(fps))
+
+                if self.counter > 50000:
+                    print('vloss: {:.6f}'.format(loss.item()))
+                
+            self.counter += 1
+                
         # save model
         if config.save_interval and self.counter % config.save_interval == 0:
             torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(self.counter)))
@@ -217,6 +231,8 @@ class Actor:
         self.distributional = config.distributional
         self.imitation_ratio = config.imitation_ratio
         self.max_steps = config.max_steps
+
+
 
     def run(self):
         """ Generate training batch sample """
