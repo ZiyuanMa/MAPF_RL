@@ -139,6 +139,14 @@ class LocalBuffer:
             self.done = True
         else:
             self.done = False
+            self.q_buf[self.size] = last_q_val
+        
+        self.obs_buf = self.obs_buf[:self.size+1]
+        self.pos_buf = self.pos_buf[:self.size+1]
+        self.act_buf = self.act_buf[:self.size]
+        self.rew_buf = self.rew_buf[:self.size]
+        self.q_buf = self.q_buf[:self.size+1]
+
 
         if self.imitation:
             assert self.done, 'size {}'.format(self.size)
@@ -186,7 +194,7 @@ class LocalBuffer:
         if self.imitation:
             # use Monte Carlo method if it's imitation
             forward = self.size - idx
-            reward = np.sum(self.rew_buf[idx:self.size+1]*discounts[:self.size+1-idx], axis=0)
+            reward = np.sum(self.rew_buf[idx:self.size]*discounts[:self.size-idx], axis=0)
         else:
             # self play
             forward = 1

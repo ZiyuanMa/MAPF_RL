@@ -151,7 +151,7 @@ class GlobalBuffer:
         else:
             return False
 
-@ray.remote(num_cpus=1, num_gpus=1)
+@ray.remote(num_cpus=2, num_gpus=1)
 class Learner:
     def __init__(self, buffer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -161,6 +161,7 @@ class Learner:
         self.optimizer = Adam(self.model.parameters(), lr=2.5e-4)
         self.buffer = buffer
         self.counter = 0
+        self.done = False
 
     
     def get_weights(self):
@@ -181,18 +182,9 @@ class Learner:
         delta_z = 10 / 50
         z_i = torch.linspace(-5, 5, 51).to(self.device)
 
-        for i in range(1000):
-            start_ts = time.time()
+        for i in range(1, 500001):
 
             data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
-            # if data is None:
-            #     return
-            while data is None:
-                # print('current size: {}'.format(ray.get(self.buffer.__len__.remote())))
-                time.sleep(1)
-                data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
-
-                # return None
 
             b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, idxes, weights = data
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
@@ -210,7 +202,7 @@ class Learner:
                 b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
                 b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
             
-            del b_next_obs, b_next_pos
+            # del b_next_obs, b_next_pos
 
             b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
 
@@ -222,6 +214,7 @@ class Learner:
             self.optimizer.zero_grad()
 
             loss.backward()
+            self.loss = loss.item()
             # scaler.scale(loss).backward()
 
             nn.utils.clip_grad_norm_(self.model.parameters(), 40)
@@ -234,29 +227,23 @@ class Learner:
 
             self.buffer.update_priorities.remote(idxes, priorities)
 
-            # update target net and log
-            if i % config.target_network_update_freq == 0:
+            # update target net
+            if i % 1250 == 0:
                 self.tar_model.load_state_dict(self.model.state_dict())
-
-                print('{} Iter {} {}'.format('=' * 10, self.counter, '=' * 10))
-                fps = int(config.target_network_update_freq / (time.time() - start_ts))
-                start_ts = time.time()
-                print('FPS {}'.format(fps))
-
-                if i > 50000:
-                    print('vloss: {:.6f}'.format(loss.item()))
                 
             self.counter += 1
                 
-        # save model
-        if config.save_interval and self.counter % config.save_interval == 0:
-            torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(self.counter)))
+            # save model
+            if i % 5000 == 0:
+                torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
 
-        return 1
+        self.done = True
     
     def stats(self, interval:int):
         print('updates: {}'.format(self.counter/interval))
+        print('loss: {}'.format(self.loss))
         self.counter = 0
+        return self.done
 
 @ray.remote(num_cpus=1)
 class Actor:
@@ -335,9 +322,10 @@ class Actor:
                 if done:
                     buffer.finish()
                 else:
-                    q_val = self.model.step(torch.FloatTensor(next_obs_pos[0]), torch.FloatTensor(next_obs_pos[1]))
-                    if self.distributional:
-                        q_val = (q_val.exp() * vrange).sum(2)
+                    with torch.no_grad():
+                        q_val = self.model.step(torch.FloatTensor(next_obs_pos[0]), torch.FloatTensor(next_obs_pos[1]))
+                        if self.distributional:
+                            q_val = (q_val.exp() * vrange).sum(2)
                     buffer.finish(q_val)
 
                 self.buffer.add.remote(buffer)

@@ -6,14 +6,15 @@ import time
 import ray
 import threading
 
-
+import config
 
 if __name__ == '__main__':
     ray.init()
 
-    buffer = GlobalBuffer.remote(1024)
+    buffer = GlobalBuffer.remote(config.global_buffer_size)
     learner = Learner.remote(buffer)
-    actors = [Actor.remote(i, 0.5, learner, buffer) for i in range(10)]
+    num_actors = 8
+    actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), learner, buffer) for i in range(num_actors)]
 
     actor_id = [ actor.run.remote() for actor in actors ]
     # time.sleep(10)
@@ -29,9 +30,10 @@ if __name__ == '__main__':
     print('start training')
     learner.train.remote()
     
-    while True:
+    done = False
+    while not done:
         time.sleep(5)
-        ray.get(learner.stats.remote(5))
+        done = ray.get(learner.stats.remote(5))
         ray.get(buffer.stats.remote(5))
 
     ray.terminate()
