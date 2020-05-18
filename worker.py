@@ -27,6 +27,7 @@ class GlobalBuffer:
         self.priority_tree = SumTree(capacity)
         self.beta = beta
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.counter = 0
 
     def __len__(self):
         return self.size
@@ -37,10 +38,16 @@ class GlobalBuffer:
         if self.buffer[self.ptr] is not None:
             self.size -= len(self.buffer[self.ptr])
         self.size += len(buffer)
+        self.counter += len(buffer)
+
+        buffer.priority_tree.tree.flags.writeable = True
 
         self.buffer[self.ptr] = buffer
 
+        # print('tree add 0')
         self.priority_tree.update(self.ptr, buffer.priority)
+        # print('tree add 1')
+        # print('ptr: {}, current size: {}, add priority: {}, current: {}'.format(self.ptr, self.size, buffer.priority, self.priority_tree.sum()))
 
         self.ptr = (self.ptr+1) % self.capacity
 
@@ -50,7 +57,10 @@ class GlobalBuffer:
 
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
         idxes, priorities = [], []
+
+        # print('tree sum 0')
         total_p = self.priority_tree.sum()
+        # print('tree sum 1')
 
         every_range_len = total_p / batch_size
         for i in range(batch_size):
@@ -117,6 +127,16 @@ class GlobalBuffer:
         new_p = np.asarray(new_p)
         self.priority_tree.batch_update(global_idxes, new_p)
 
+    def stats(self):
+        print('buffer update: {}'.format(self.counter))
+        self.counter = 0
+
+    def ready(self):
+        if len(self) >= config.learning_starts:
+            return True
+        else:
+            return False
+
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
     def __init__(self, buffer):
@@ -138,7 +158,6 @@ class Learner:
     def train(self):
         self.learning_thread = threading.Thread(target=self.run, daemon=True)
         self.learning_thread.start()
-        return self.learning_thread
 
     def run(self):
 
@@ -148,13 +167,15 @@ class Learner:
         delta_z = 10 / 50
         z_i = torch.linspace(-5, 5, 51).to(self.device)
 
-        for _ in range(20):
+        for _ in range(1000):
             start_ts = time.time()
 
             data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
+            # if data is None:
+            #     return
             while data is None:
-                print('current size: {}'.format(ray.get(self.buffer.__len__.remote())))
-                time.sleep(2)
+                # print('current size: {}'.format(ray.get(self.buffer.__len__.remote())))
+                time.sleep(1)
                 data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
 
                 # return None
@@ -174,6 +195,8 @@ class Learner:
                 temp = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
                 b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
                 b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
+            
+            del b_next_obs, b_next_pos
 
             b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
 
@@ -194,7 +217,6 @@ class Learner:
             # scaler.update()
 
             # scheduler.step()
-
 
             self.buffer.update_priorities.remote(idxes, priorities)
 
@@ -217,6 +239,10 @@ class Learner:
             torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(self.counter)))
 
         return 1
+    
+    def stats(self):
+        print('current step: {}'.format(self.counter))
+        ray.get(self.buffer.stats.remote())
 
 @ray.remote(num_cpus=1)
 class Actor:
@@ -232,17 +258,12 @@ class Actor:
         self.imitation_ratio = config.imitation_ratio
         self.max_steps = config.max_steps
 
-
-
     def run(self):
         """ Generate training batch sample """
         done = False
 
-
         if self.distributional:
             vrange = torch.linspace(-5, 5, 51)
-
-
 
         # if use imitation learning
         imitation = True if random.random() < self.imitation_ratio else False
@@ -304,6 +325,7 @@ class Actor:
                     if self.distributional:
                         q_val = (q_val.exp() * vrange).sum(2)
                     buffer.finish(q_val)
+
                 self.buffer.add.remote(buffer)
                 # print('actor {} sent buffer'.format(self.id))
 

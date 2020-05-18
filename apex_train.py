@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
     buffer = GlobalBuffer.remote(1024)
     learner = Learner.remote(buffer)
-    actors = [Actor.remote(i, 0.5, learner, buffer) for i in range(6)]
+    actors = [Actor.remote(i, 0.5, learner, buffer) for i in range(10)]
 
     actor_id = [ actor.run.remote() for actor in actors ]
     # time.sleep(10)
@@ -22,6 +22,11 @@ if __name__ == '__main__':
     #     ret = ray.get(learner.run.remote())
     #     if ret is None:
     #         time.sleep(2)
+    while not ray.get(buffer.ready.remote()):
+        time.sleep(5)
 
-    thread = ray.get(learner.train.remote())
-    thread.join()
+    learner.run.remote()
+    
+    while True:
+        time.sleep(5)
+        ray.get(buffer.stats.remote())

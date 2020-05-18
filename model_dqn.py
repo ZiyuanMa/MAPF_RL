@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import log_softmax
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 import config
 
 # class ResBlock(nn.Module):
@@ -173,7 +173,10 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
-        latent = latent.view(batch_size, seq_length, self.latent_dim)
+        latent = latent.split(steps)
+        latent = pad_sequence(latent, batch_first=True)
+
+        # latent = latent.view(batch_size, seq_length, self.latent_dim)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
