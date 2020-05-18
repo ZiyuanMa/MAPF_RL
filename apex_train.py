@@ -13,10 +13,10 @@ if __name__ == '__main__':
 
     buffer = GlobalBuffer.remote(config.global_buffer_size)
     learner = Learner.remote(buffer)
-    num_actors = 8
+    num_actors = 4
     actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), learner, buffer) for i in range(num_actors)]
 
-    actor_id = [ actor.run.remote() for actor in actors ]
+    [ actor.run.remote() for actor in actors ]
     # time.sleep(10)
     # learner = Learner.remote(buffer)
     # for _ in range(100):
@@ -28,12 +28,11 @@ if __name__ == '__main__':
         ray.get(buffer.stats.remote(5))
 
     print('start training')
-    learner.train.remote()
+    learner.run.remote()
     
     done = False
     while not done:
         time.sleep(5)
         done = ray.get(learner.stats.remote(5))
         ray.get(buffer.stats.remote(5))
-
-    ray.terminate()
+        print()

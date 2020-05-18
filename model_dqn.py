@@ -82,14 +82,18 @@ class Network(nn.Module):
         self.distributional = distributional
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
+            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(cnn_channel),
             nn.ReLU(True),
 
-            ResBlock(cnn_channel, type='cnn'),
+            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1, bias=False),
+            nn.BatchNorm2d(cnn_channel),
+            nn.ReLU(True),
 
-            ResBlock(cnn_channel, type='cnn'),
+            ResBlock(cnn_channel, type='cnn', bn=True),
 
-            nn.Conv2d(cnn_channel, 8, 1, 1),
+            nn.Conv2d(cnn_channel, 8, 1, 1, bias=False),
+            nn.BatchNorm2d(8),
             nn.ReLU(True),
 
             nn.Flatten(),
@@ -161,8 +165,7 @@ class Network(nn.Module):
         self.hidden = None
 
     def bootstrap(self, obs, pos, steps):
-        batch_size = obs.size(0)
-        seq_length = obs.size(1)
+
         obs = obs.view(-1, self.obs_dim, 9, 9)
         pos = pos.view(-1, self.pos_dim)
 

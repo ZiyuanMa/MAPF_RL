@@ -9,7 +9,6 @@ import numpy as np
 from copy import deepcopy
 from typing import List
 import threading
-import asyncio
 
 import config
 from model_dqn import Network
@@ -17,7 +16,7 @@ from environment import Environment
 from buffer import SumTree, LocalBuffer
 from search import find_path
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=2)
 class GlobalBuffer:
     def __init__(self, capacity, beta=config.prioritized_replay_beta):
         self.capacity = capacity
@@ -26,7 +25,6 @@ class GlobalBuffer:
         self.buffer = [ None for _ in range(capacity) ]
         self.priority_tree = SumTree(capacity)
         self.beta = beta
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.counter = 0
 
     def __len__(self):
@@ -50,17 +48,19 @@ class GlobalBuffer:
         # print('ptr: {}, current size: {}, add priority: {}, current: {}'.format(self.ptr, self.size, buffer.priority, self.priority_tree.sum()))
 
         self.ptr = (self.ptr+1) % self.capacity
+    
+    def batch_add(self, buffers:List[LocalBuffer]):
+        for buffer in buffers:
+            self.add(buffer)
 
     def sample_batch(self, batch_size):
         if len(self) < config.learning_starts:
             return None
 
+        total_p = self.priority_tree.sum()
+
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
         idxes, priorities = [], []
-
-        # print('tree sum 0')
-        total_p = self.priority_tree.sum()
-        # print('tree sum 1')
 
         every_range_len = total_p / batch_size
         for i in range(batch_size):
@@ -88,7 +88,7 @@ class GlobalBuffer:
         min_p = np.min(priorities)
         weights = np.power(priorities/min_p, -self.beta)
 
-        res = (
+        data = (
             torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
             torch.from_numpy(np.concatenate(b_pos).astype(np.float32)),
             torch.LongTensor(b_action).unsqueeze(1),
@@ -106,13 +106,15 @@ class GlobalBuffer:
         )
 
         self.temp = self.ptr
-        return res
+
+        return data
 
     def update_priorities(self, idxes:List[int], priorities:List[float]):
         """Update priorities of sampled transitions"""
 
         idxes = np.asarray(idxes)
         priorities = np.asarray(priorities)
+
         # discard the idx that already been discarded during training
         if self.ptr > self.temp:
             # range from [self.temp, self.ptr)
@@ -143,6 +145,7 @@ class GlobalBuffer:
 
     def stats(self, interval:int):
         print('buffer update: {}'.format(self.counter/interval))
+        print('buffer size: {}'.format(self.size))
         self.counter = 0
 
     def ready(self):
@@ -162,19 +165,24 @@ class Learner:
         self.buffer = buffer
         self.counter = 0
         self.done = False
+        self.loss = 0
 
-    
-    def get_weights(self):
         state_dict = self.model.state_dict()
         for k, v in state_dict.items():
             state_dict[k] = v.cpu()
-        return state_dict
+        weight_id = ray.put(state_dict)
+        self.weight_id = weight_id
 
-    def train(self):
-        self.learning_thread = threading.Thread(target=self.run, daemon=True)
-        self.learning_thread.start()
+    
+    def get_weights(self):
+
+        return self.weight_id
 
     def run(self):
+        self.learning_thread = threading.Thread(target=self.train, daemon=True)
+        self.learning_thread.start()
+
+    def train(self):
 
         min_value = -5
         max_value = 5
@@ -185,7 +193,7 @@ class Learner:
         for i in range(1, 500001):
 
             data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
-
+ 
             b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, idxes, weights = data
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
             b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
@@ -225,13 +233,20 @@ class Learner:
 
             # scheduler.step()
 
+            # store new weight in shared memory
+            state_dict = self.model.state_dict()
+            for k, v in state_dict.items():
+                state_dict[k] = v.cpu()
+            weights_id = ray.put(state_dict)
+            self.weights_id = weights_id
+
             self.buffer.update_priorities.remote(idxes, priorities)
+
+            self.counter += 1
 
             # update target net
             if i % 1250 == 0:
                 self.tar_model.load_state_dict(self.model.state_dict())
-                
-            self.counter += 1
                 
             # save model
             if i % 5000 == 0:
@@ -240,9 +255,9 @@ class Learner:
         self.done = True
     
     def stats(self, interval:int):
-        print('updates: {}'.format(self.counter/interval))
+        print('updates: {}'.format(self.counter))
         print('loss: {}'.format(self.loss))
-        self.counter = 0
+        # self.counter = 0
         return self.done
 
 @ray.remote(num_cpus=1)
@@ -279,6 +294,7 @@ class Actor:
             obs_pos = self.env.reset()
             buffer = LocalBuffer(obs_pos, False)
 
+        buffers = []
 
         while True:
 
@@ -328,8 +344,10 @@ class Actor:
                             q_val = (q_val.exp() * vrange).sum(2)
                     buffer.finish(q_val)
 
-                self.buffer.add.remote(buffer)
-                # print('actor {} sent buffer'.format(self.id))
+                buffers.append(buffer)
+                if len(buffers) == 8:
+                    self.buffer.batch_add.remote(buffers)
+                    buffers.clear()
 
                 done = False
                 self.model.reset()
@@ -345,7 +363,8 @@ class Actor:
                     buffer = LocalBuffer(obs_pos, True)
                 else:
                     # load weights from learner
-                    weights = ray.get(self.learner.get_weights.remote())
+                    weights_id = ray.get(self.learner.get_weights.remote())
+                    weights = ray.get(weights_id)
                     self.model.load_state_dict(weights)
 
                     buffer = LocalBuffer(obs_pos, False)
