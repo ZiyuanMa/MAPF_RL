@@ -24,9 +24,14 @@ if __name__ == '__main__':
     #         time.sleep(2)
     while not ray.get(buffer.ready.remote()):
         time.sleep(5)
+        ray.get(buffer.stats.remote(5))
 
-    learner.run.remote()
+    print('start training')
+    learner.train.remote()
     
     while True:
         time.sleep(5)
-        ray.get(buffer.stats.remote())
+        ray.get(learner.stats.remote(5))
+        ray.get(buffer.stats.remote(5))
+
+    ray.terminate()

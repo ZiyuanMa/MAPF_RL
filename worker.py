@@ -104,18 +104,32 @@ class GlobalBuffer:
             idxes,
             torch.from_numpy(weights).unsqueeze(1)
         )
+
+        self.temp = self.ptr
         return res
 
     def update_priorities(self, idxes:List[int], priorities:List[float]):
         """Update priorities of sampled transitions"""
 
         idxes = np.asarray(idxes)
+        priorities = np.asarray(priorities)
+        # discard the idx that already been discarded during training
+        if self.ptr > self.temp:
+            # range from [self.temp, self.ptr)
+            mask = (idxes < self.temp*config.max_steps) | (idxes >= self.ptr*config.max_steps)
+            idxes = idxes[mask]
+            priorities = priorities[mask]
+        elif self.ptr < self.temp:
+            # range from [0, self.ptr) & [self.temp, self,capacity)
+            mask = (idxes < self.temp*config.max_steps) & (idxes >= self.ptr*config.max_steps)
+            idxes = idxes[mask]
+            priorities = priorities[mask]
+
         global_idxes = idxes // config.max_steps
         local_idxes = idxes % config.max_steps
 
         for global_idx, local_idx, priority in zip(global_idxes, local_idxes, priorities):
             assert priority > 0
-            assert 0 <= local_idx < self.size
 
             self.buffer[global_idx].update_priority(local_idx, priority)
 
@@ -127,8 +141,8 @@ class GlobalBuffer:
         new_p = np.asarray(new_p)
         self.priority_tree.batch_update(global_idxes, new_p)
 
-    def stats(self):
-        print('buffer update: {}'.format(self.counter))
+    def stats(self, interval:int):
+        print('buffer update: {}'.format(self.counter/interval))
         self.counter = 0
 
     def ready(self):
@@ -146,7 +160,7 @@ class Learner:
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=2.5e-4)
         self.buffer = buffer
-        self.counter = 1
+        self.counter = 0
 
     
     def get_weights(self):
@@ -167,7 +181,7 @@ class Learner:
         delta_z = 10 / 50
         z_i = torch.linspace(-5, 5, 51).to(self.device)
 
-        for _ in range(1000):
+        for i in range(1000):
             start_ts = time.time()
 
             data = ray.get(self.buffer.sample_batch.remote(config.batch_size))
@@ -221,7 +235,7 @@ class Learner:
             self.buffer.update_priorities.remote(idxes, priorities)
 
             # update target net and log
-            if self.counter % config.target_network_update_freq == 0:
+            if i % config.target_network_update_freq == 0:
                 self.tar_model.load_state_dict(self.model.state_dict())
 
                 print('{} Iter {} {}'.format('=' * 10, self.counter, '=' * 10))
@@ -229,7 +243,7 @@ class Learner:
                 start_ts = time.time()
                 print('FPS {}'.format(fps))
 
-                if self.counter > 50000:
+                if i > 50000:
                     print('vloss: {:.6f}'.format(loss.item()))
                 
             self.counter += 1
@@ -240,9 +254,9 @@ class Learner:
 
         return 1
     
-    def stats(self):
-        print('current step: {}'.format(self.counter))
-        ray.get(self.buffer.stats.remote())
+    def stats(self, interval:int):
+        print('updates: {}'.format(self.counter/interval))
+        self.counter = 0
 
 @ray.remote(num_cpus=1)
 class Actor:

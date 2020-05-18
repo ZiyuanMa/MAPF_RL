@@ -166,6 +166,8 @@ class LocalBuffer:
 
         idx, _ = self.priority_tree.find_prefixsum_idx(prefixsum)
 
+        assert 0 <= idx < self.size
+
         priority = self.priority_tree[idx]
 
         encoded_sample = self._encode_sample(idx)
@@ -173,7 +175,7 @@ class LocalBuffer:
         return encoded_sample + (idx, priority)
 
     def update_priority(self, idx, priority):
-        assert 0 <= idx < self.size
+        assert 0 <= idx < self.size, 'idx {} out of size {}'.format(idx, self.size)
 
         self.priority_tree.update(idx, priority**self.alpha)
         self.priority = self.priority_tree.sum()
