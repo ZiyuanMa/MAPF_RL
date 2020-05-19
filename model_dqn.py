@@ -82,18 +82,15 @@ class Network(nn.Module):
         self.distributional = distributional
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(cnn_channel),
+            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
 
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(cnn_channel),
+            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
 
-            ResBlock(cnn_channel, type='cnn', bn=True),
+            ResBlock(cnn_channel, type='cnn'),
 
-            nn.Conv2d(cnn_channel, 8, 1, 1, bias=False),
-            nn.BatchNorm2d(8),
+            nn.Conv2d(cnn_channel, 8, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
@@ -165,6 +162,7 @@ class Network(nn.Module):
         self.hidden = None
 
     def bootstrap(self, obs, pos, steps):
+        batch_size = obs.size(0)
 
         obs = obs.view(-1, self.obs_dim, 9, 9)
         pos = pos.view(-1, self.pos_dim)
@@ -176,10 +174,10 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
-        latent = latent.split(steps)
-        latent = pad_sequence(latent, batch_first=True)
+        # latent = latent.split(steps)
+        # latent = pad_sequence(latent, batch_first=True)
 
-        # latent = latent.view(batch_size, seq_length, self.latent_dim)
+        latent = latent.view(batch_size, config.bt_steps, self.latent_dim)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
