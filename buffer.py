@@ -248,28 +248,27 @@ class GlobalBuffer:
         return self.size
 
     def add(self, buffer:LocalBuffer):
-        
-        # update buffer size
-        if self.buffer[self.ptr] is not None:
-            self.size -= len(self.buffer[self.ptr])
-        self.size += len(buffer)
-        self.counter += len(buffer)
+        with self.lock:
+            # update buffer size
+            if self.buffer[self.ptr] is not None:
+                self.size -= len(self.buffer[self.ptr])
+            self.size += len(buffer)
+            self.counter += len(buffer)
 
-        buffer.priority_tree.tree.flags.writeable = True
+            buffer.priority_tree.tree.flags.writeable = True
 
-        self.buffer[self.ptr] = buffer
+            self.buffer[self.ptr] = buffer
 
-        # print('tree add 0')
-        self.priority_tree.update(self.ptr, buffer.priority)
-        # print('tree add 1')
-        # print('ptr: {}, current size: {}, add priority: {}, current: {}'.format(self.ptr, self.size, buffer.priority, self.priority_tree.sum()))
+            # print('tree add 0')
+            self.priority_tree.update(self.ptr, buffer.priority)
+            # print('tree add 1')
+            # print('ptr: {}, current size: {}, add priority: {}, current: {}'.format(self.ptr, self.size, buffer.priority, self.priority_tree.sum()))
 
-        self.ptr = (self.ptr+1) % self.capacity
+            self.ptr = (self.ptr+1) % self.capacity
     
     def batch_add(self, buffers:List[LocalBuffer]):
-        with self.lock:
-            for buffer in buffers:
-                self.add(buffer)
+        for buffer in buffers:
+            self.add(buffer)
 
     def sample_batch(self, batch_size):
         with self.lock:
