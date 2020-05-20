@@ -157,14 +157,14 @@ class LocalBuffer:
         if self.imitation:
             for i in range(self.size):
                 reward = np.sum(self.rew_buf[i:self.size]*discounts[:self.size-i], axis=0)
-                q_val = np.max(self.q_buf[i], axis=1)
+                q_val = self.q_buf[i,[0,1],self.act_buf[i]]
                 priorities[i] = np.abs(reward-q_val)
             priorities = np.mean(priorities, axis=1)
 
         else:
             for i in range(self.size):
                 reward = self.rew_buf[i]+0.99*np.max(self.q_buf[i+1], axis=1)
-                q_val = np.max(self.q_buf[i], axis=1)
+                q_val = self.q_buf[i,[0,1],self.act_buf[i]]
                 priorities[i] = np.abs(reward-q_val)
             priorities = np.mean(priorities, axis=1)
 

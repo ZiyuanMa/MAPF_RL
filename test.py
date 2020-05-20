@@ -66,8 +66,8 @@ def test_model(num_agents, test_case='test2.pkl'):
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 1
-        show = False
+        case = 2
+        show = True
         show_steps = 30
         fail = 0
         optimal = 0

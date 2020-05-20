@@ -214,7 +214,7 @@ class Actor:
 
                 buffers.append(buffer)
                 if len(buffers) == 8:
-                    self.learner.batch_add.remote(buffers)
+                    self.learner.batch_add.remote(buffer)
                     buffers.clear()
 
                 done = False

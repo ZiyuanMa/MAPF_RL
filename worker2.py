@@ -28,6 +28,7 @@ class GlobalBuffer:
         self.beta = beta
         self.counter = 0
         self.data = []
+        self.lock = threading.Lock()
 
     def __len__(self):
         return self.size
@@ -38,132 +39,133 @@ class GlobalBuffer:
 
     def prepare_data(self):
         while True:
-            if len(self.data) < 4:
+            if len(self.data) < 3:
                 data = self.sample_batch(config.batch_size)
                 data_id = ray.put(data)
                 self.data.append(data_id)
             else:
-                time.sleep(1)
+                time.sleep(0.5)
     
     def get_data(self):
-        while len(self.data) == 0:
-            time.sleep(0.5)
-            print('waiting')
-        
-        return self.data.pop(0)
+
+        if len(self.data) == 0:
+            print('no prepared data')
+            data = self.sample_batch(config.batch_size)
+            data_id = ray.put(data)
+            return data_id
+        else:
+            return self.data.pop(0)
 
 
-    def add(self, buffer:LocalBuffer):
+    def add(self, buffer):
         # update buffer size
-        if self.buffer[self.ptr] is not None:
-            self.size -= len(self.buffer[self.ptr])
-        self.size += len(buffer)
-        self.counter += len(buffer)
+        with self.lock:
+            # buffer = ray.get(buffer_id)
+            if self.buffer[self.ptr] is not None:
+                self.size -= len(self.buffer[self.ptr])
+            self.size += len(buffer)
+            self.counter += len(buffer)
 
-        buffer.priority_tree.tree.flags.writeable = True
+            buffer.priority_tree.tree.flags.writeable = True
 
-        self.buffer[self.ptr] = buffer
+            self.buffer[self.ptr] = buffer
 
-        # print('tree add 0')
-        self.priority_tree.update(self.ptr, buffer.priority)
-        # print('tree add 1')
-        # print('ptr: {}, current size: {}, add priority: {}, current: {}'.format(self.ptr, self.size, buffer.priority, self.priority_tree.sum()))
+            # print('tree add 0')
+            self.priority_tree.update(self.ptr, buffer.priority)
+            # print('tree add 1')
+            # print('ptr: {}, current size: {}, add priority: {}, current: {}'.format(self.ptr, self.size, buffer.priority, self.priority_tree.sum()))
 
-        self.ptr = (self.ptr+1) % self.capacity
-    
-    def batch_add(self, buffers):
-        buffers = ray.get(buffers)
-        for buffer in buffers:
-            self.add(buffer)
+            self.ptr = (self.ptr+1) % self.capacity
 
     def sample_batch(self, batch_size):
+        with self.lock:
+            if len(self) < config.learning_starts:
+                raise Exception('buffer size is not large enough')
 
-        if len(self) < config.learning_starts:
-            return None
+            total_p = self.priority_tree.sum()
 
-        total_p = self.priority_tree.sum()
+            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
+            idxes, priorities = [], []
 
-        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
-        idxes, priorities = [], []
+            every_range_len = total_p / batch_size
+            for i in range(batch_size):
+                global_prefixsum = random.random() * every_range_len + i * every_range_len
+                global_idx, local_prefixsum = self.priority_tree.find_prefixsum_idx(global_prefixsum)
+                ret = self.buffer[global_idx].sample(local_prefixsum)
+                obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps, local_idx, priority = ret   
+                
+                b_obs.append(obs)
+                b_pos.append(pos)
+                b_action += action
+                b_reward += reward
+                b_next_obs.append(next_obs)
+                b_next_pos.append(next_pos)
 
-        every_range_len = total_p / batch_size
-        for i in range(batch_size):
-            global_prefixsum = random.random() * every_range_len + i * every_range_len
-            global_idx, local_prefixsum = self.priority_tree.find_prefixsum_idx(global_prefixsum)
-            ret = self.buffer[global_idx].sample(local_prefixsum)
-            obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps, local_idx, priority = ret   
-            
-            b_obs.append(obs)
-            b_pos.append(pos)
-            b_action += action
-            b_reward += reward
-            b_next_obs.append(next_obs)
-            b_next_pos.append(next_pos)
+                b_done += done
+                b_steps += steps
+                b_bt_steps += bt_steps
+                b_next_bt_steps += next_bt_steps
 
-            b_done += done
-            b_steps += steps
-            b_bt_steps += bt_steps
-            b_next_bt_steps += next_bt_steps
+                idxes.append(global_idx*config.max_steps+local_idx)
+                priorities.append(priority)
 
-            idxes.append(global_idx*config.max_steps+local_idx)
-            priorities.append(priority)
+            priorities = np.array(priorities, dtype=np.float32)
+            min_p = np.min(priorities)
+            weights = np.power(priorities/min_p, -self.beta)
 
-        priorities = np.array(priorities, dtype=np.float32)
-        min_p = np.min(priorities)
-        weights = np.power(priorities/min_p, -self.beta)
+            data = (
+                torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
+                torch.from_numpy(np.concatenate(b_pos).astype(np.float32)),
+                torch.LongTensor(b_action).unsqueeze(1),
+                torch.FloatTensor(b_reward).unsqueeze(1),
+                torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)),
+                torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)),
 
-        data = (
-            torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
-            torch.from_numpy(np.concatenate(b_pos).astype(np.float32)),
-            torch.LongTensor(b_action).unsqueeze(1),
-            torch.FloatTensor(b_reward).unsqueeze(1),
-            torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)),
-            torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)),
+                torch.FloatTensor(b_done).unsqueeze(1),
+                torch.FloatTensor(b_steps).unsqueeze(1),
+                b_bt_steps,
+                b_next_bt_steps,
 
-            torch.FloatTensor(b_done).unsqueeze(1),
-            torch.FloatTensor(b_steps).unsqueeze(1),
-            b_bt_steps,
-            b_next_bt_steps,
+                idxes,
+                torch.from_numpy(weights).unsqueeze(1),
+                self.ptr
+            )
 
-            idxes,
-            torch.from_numpy(weights).unsqueeze(1),
-            self.ptr
-        )
-
-        return data
+            return data
 
     def update_priorities(self, idxes:List[int], priorities:List[float], old_ptr):
         """Update priorities of sampled transitions"""
-        idxes = np.asarray(idxes)
-        priorities = np.asarray(priorities)
+        with self.lock:
+            idxes = np.asarray(idxes)
+            priorities = np.asarray(priorities)
 
-        # discard the idx that already been discarded during training
-        if self.ptr > old_ptr:
-            # range from [old_ptr, self.ptr)
-            mask = (idxes < old_ptr*config.max_steps) | (idxes >= self.ptr*config.max_steps)
-            idxes = idxes[mask]
-            priorities = priorities[mask]
-        elif self.ptr < old_ptr:
-            # range from [0, self.ptr) & [old_ptr, self,capacity)
-            mask = (idxes < old_ptr*config.max_steps) & (idxes >= self.ptr*config.max_steps)
-            idxes = idxes[mask]
-            priorities = priorities[mask]
+            # discard the idx that already been discarded during training
+            if self.ptr > old_ptr:
+                # range from [old_ptr, self.ptr)
+                mask = (idxes < old_ptr*config.max_steps) | (idxes >= self.ptr*config.max_steps)
+                idxes = idxes[mask]
+                priorities = priorities[mask]
+            elif self.ptr < old_ptr:
+                # range from [0, self.ptr) & [old_ptr, self,capacity)
+                mask = (idxes < old_ptr*config.max_steps) & (idxes >= self.ptr*config.max_steps)
+                idxes = idxes[mask]
+                priorities = priorities[mask]
 
-        global_idxes = idxes // config.max_steps
-        local_idxes = idxes % config.max_steps
+            global_idxes = idxes // config.max_steps
+            local_idxes = idxes % config.max_steps
 
-        for global_idx, local_idx, priority in zip(global_idxes, local_idxes, priorities):
-            assert priority > 0
+            for global_idx, local_idx, priority in zip(global_idxes, local_idxes, priorities):
+                assert priority > 0
 
-            self.buffer[global_idx].update_priority(local_idx, priority)
+                self.buffer[global_idx].update_priority(local_idx, priority)
 
-        global_idxes = np.unique(global_idxes)
-        new_p = []
-        for global_idx in global_idxes:
-            new_p.append(self.buffer[global_idx].priority)
+            global_idxes = np.unique(global_idxes)
+            new_p = []
+            for global_idx in global_idxes:
+                new_p.append(self.buffer[global_idx].priority)
 
-        new_p = np.asarray(new_p)
-        self.priority_tree.batch_update(global_idxes, new_p)
+            new_p = np.asarray(new_p)
+            self.priority_tree.batch_update(global_idxes, new_p)
 
     def stats(self, interval:int):
         print('buffer update: {}'.format(self.counter/interval))
@@ -178,14 +180,14 @@ class GlobalBuffer:
 
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
-    def __init__(self):
+    def __init__(self, buffer:GlobalBuffer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=5e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[5000,30000,40000,80000], gamma=0.5)
-        self.buffer = GlobalBuffer(config.global_buffer_size)
+        self.optimizer = Adam(self.model.parameters(), lr=2.5e-4)
+        # self.scheduler = MultiStepLR(self.optimizer, milestones=[5000,30000,40000,80000], gamma=0.5)
+        self.buffer = buffer
         self.counter = 0
         self.done = False
         self.loss = 0
@@ -196,14 +198,10 @@ class Learner:
         weight_id = ray.put(state_dict)
         self.weight_id = weight_id
 
-    def ready(self):
-        return self.buffer.ready()
 
     def get_weights(self):
         return self.weight_id
 
-    def batch_add(self, buffers:List[LocalBuffer]):
-        self.buffer.batch_add(buffers)
 
     def run(self):
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
@@ -217,7 +215,7 @@ class Learner:
         delta_z = 10 / 50
         z_i = torch.linspace(-5, 5, 51).to(self.device)
 
-        for i in range(1, 200001):
+        for i in range(1, 100001):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
@@ -259,7 +257,7 @@ class Learner:
             # scaler.step(optimizer)
             # scaler.update()
 
-            self.scheduler.step()
+            # self.scheduler.step()
 
             # store new weight in shared memory
             state_dict = self.model.state_dict()
@@ -268,7 +266,7 @@ class Learner:
             weights_id = ray.put(state_dict)
             self.weights_id = weights_id
 
-            self.buffer.update_priorities(idxes, priorities, old_ptr)
+            self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
 
             self.counter += 1
 
@@ -285,7 +283,6 @@ class Learner:
     def stats(self, interval:int):
         print('updates: {}'.format(self.counter))
         print('loss: {}'.format(self.loss))
-        self.buffer.stats(interval)
         # self.counter = 0
         return self.done
 
@@ -322,8 +319,6 @@ class Actor:
         else:
             obs_pos = self.env.reset()
             buffer = LocalBuffer(obs_pos, False)
-
-        buffers = []
 
         while True:
 
@@ -373,11 +368,9 @@ class Actor:
                             q_val = (q_val.exp() * vrange).sum(2)
                     buffer.finish(q_val)
 
-                buffers.append(buffer)
-                if len(buffers) == 8:
-                    buffer_id = ray.put(buffers)
-                    self.learner.batch_add.remote(buffer_id)
-                    buffers.clear()
+
+                # buffer_id = ray.put(buffer)
+                self.buffer.add.remote(buffer)
 
                 done = False
                 self.model.reset()
