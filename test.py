@@ -67,7 +67,7 @@ def test_model(num_agents, test_case='test2.pkl'):
         env = Environment()
 
         case = 2
-        show = True
+        show = False
         show_steps = 30
         fail = 0
         optimal = 0

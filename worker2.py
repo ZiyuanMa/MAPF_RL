@@ -39,7 +39,7 @@ class GlobalBuffer:
 
     def prepare_data(self):
         while True:
-            if len(self.data) < 3:
+            if len(self.data) < 4:
                 data = self.sample_batch(config.batch_size)
                 data_id = ray.put(data)
                 self.data.append(data_id)
@@ -185,7 +185,7 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=2e-4)
+        self.optimizer = Adam(self.model.parameters(), lr=6.25e-5)
         # self.scheduler = MultiStepLR(self.optimizer, milestones=[5000,30000,40000,80000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
@@ -215,7 +215,7 @@ class Learner:
         delta_z = 10 / 50
         z_i = torch.linspace(-5, 5, 51).to(self.device)
 
-        for i in range(1, 100001):
+        for i in range(1, 200001):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
@@ -270,7 +270,7 @@ class Learner:
             self.counter += 1
 
             # update target net
-            if i % 1250 == 0:
+            if i % 2500 == 0:
                 self.tar_model.load_state_dict(self.model.state_dict())
                 
             # save model
