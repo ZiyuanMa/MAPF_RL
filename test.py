@@ -69,6 +69,7 @@ def test_model(num_agents, test_case='test2.pkl'):
         case = 2
         show = False
         show_steps = 30
+        
         fail = 0
         optimal = 0
 

@@ -19,11 +19,9 @@ pos_shape = (4)
 ############################################################
 
 # basic training setting
-training_timesteps = 1250000
 save_interval=5000
 gamma=0.99
-batch_size=64
-train_freq=4
+batch_size=128
 learning_starts=50000
 target_network_update_freq=5000
 save_path='./models'
@@ -33,13 +31,13 @@ dtype = 'float32'
 load_model = None
 
 local_buffer_size = max_steps
-global_buffer_size = 4096
+global_buffer_size = 2048
 
 # gradient norm clipping
 grad_norm_dqn=40
 
 # distributional dqn
-distributional = True
+distributional = False
 
 # prioritized replay
 prioritized_replay_alpha=0.6

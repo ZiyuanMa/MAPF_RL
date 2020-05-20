@@ -185,7 +185,7 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=6.25e-5)
+        self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
         # self.scheduler = MultiStepLR(self.optimizer, milestones=[5000,30000,40000,80000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
@@ -224,25 +224,45 @@ class Learner:
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
             b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
 
-            with torch.no_grad():
-                b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
-                b_next_action = (b_next_dist * z_i).sum(-1).argmax(1)
-                b_tzj = ((0.99**b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
-                b_i = (b_tzj - min_value) / delta_z
-                b_l = b_i.floor()
-                b_u = b_i.ceil()
-                b_m = torch.zeros(config.batch_size*config.num_agents, atom_num).to(self.device)
-                temp = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
-                b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
-                b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
-            
-            # del b_next_obs, b_next_pos
-            b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
+            if config.distributional:
+                with torch.no_grad():
+                    b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
+                    b_next_action = (b_next_dist * z_i).sum(-1).argmax(1)
+                    b_tzj = ((0.99**b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
+                    b_i = (b_tzj - min_value) / delta_z
+                    b_l = b_i.floor()
+                    b_u = b_i.ceil()
+                    b_m = torch.zeros(config.batch_size*config.num_agents, atom_num).to(self.device)
+                    temp = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
+                    b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
+                    b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
 
-            kl_error = (-b_q*b_m).sum(dim=1).reshape(config.batch_size, config.num_agents).mean(dim=1)
-            # use kl error as priorities as proposed by Rainbow
-            priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
-            loss = kl_error.mean()
+                b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
+
+                kl_error = (-b_q*b_m).sum(dim=1).reshape(config.batch_size, config.num_agents).mean(dim=1)
+                # kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
+                # use kl error as priorities as proposed by Rainbow
+                priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
+                loss = kl_error.mean()
+
+            else:
+                with torch.no_grad():
+                    # choose max q index from next observation
+                    # double q-learning
+                    if config.double_q:
+                        b_action_ = self.model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).argmax(1, keepdim=True)
+                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).gather(1, b_action_)
+                    else:
+                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).max(1, keepdim=True)[0]
+
+                b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
+
+                abs_td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_)).abs().reshape(config.batch_size, config.num_agents).mean(dim=1, keepdim=True)
+
+                priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
+
+                loss = (weights * self.huber_loss(abs_td_error)).mean()
+
 
             self.optimizer.zero_grad()
 
@@ -270,7 +290,7 @@ class Learner:
             self.counter += 1
 
             # update target net
-            if i % 2500 == 0:
+            if i % 1250 == 0:
                 self.tar_model.load_state_dict(self.model.state_dict())
                 
             # save model
@@ -278,7 +298,10 @@ class Learner:
                 torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
 
         self.done = True
-    
+    def huber_loss(self, abs_td_error):
+        flag = (abs_td_error < 1).float()
+        return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
+        
     def stats(self, interval:int):
         print('updates: {}'.format(self.counter))
         print('loss: {}'.format(self.loss))

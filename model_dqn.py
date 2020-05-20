@@ -90,6 +90,8 @@ class Network(nn.Module):
             nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
 
+            ResBlock(cnn_channel, type='cnn'),
+
             nn.Conv2d(cnn_channel, 8, 1, 1),
             nn.ReLU(True),
 

@@ -397,7 +397,7 @@ class Environment:
             obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
             obs[i,1] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
-            obs[i,1,self.obs_radius,self.obs_radius] = 1
+            assert obs[i,1,self.obs_radius,self.obs_radius] == 1
 
         return obs, pos
     
