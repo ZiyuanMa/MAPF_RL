@@ -185,7 +185,7 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=2.5e-4)
+        self.optimizer = Adam(self.model.parameters(), lr=2e-4)
         # self.scheduler = MultiStepLR(self.optimizer, milestones=[5000,30000,40000,80000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
@@ -237,7 +237,6 @@ class Learner:
                 b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
             
             # del b_next_obs, b_next_pos
-
             b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
 
             kl_error = (-b_q*b_m).sum(dim=1).reshape(config.batch_size, config.num_agents).mean(dim=1)

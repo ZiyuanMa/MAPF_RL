@@ -1,12 +1,19 @@
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 import torch
+import numpy as np
+import random
+
 from worker2 import GlobalBuffer, Learner, Actor
 import time
 import ray
 import threading
 
 import config
+
+torch.manual_seed(0)
+np.random.seed(0)
+random.seed(0)
 
 if __name__ == '__main__':
     ray.init()
