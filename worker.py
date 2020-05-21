@@ -206,12 +206,6 @@ class Learner:
 
     def train(self):
 
-        min_value = -5
-        max_value = 5
-        atom_num = 51
-        delta_z = 10 / 50
-        z_i = torch.linspace(-5, 5, 51).to(self.device)
-
         for i in range(1, 200001):
 
             data_id = ray.get(self.buffer.get_data.remote())
@@ -223,23 +217,10 @@ class Learner:
 
             if config.distributional:
                 with torch.no_grad():
-                    b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps).exp()
-                    b_next_action = (b_next_dist * z_i).sum(-1).argmax(1)
-                    b_tzj = ((0.99**b_steps) * (1 - b_done) * z_i[None, :] + b_reward).clamp(min_value, max_value)
-                    b_i = (b_tzj - min_value) / delta_z
-                    b_l = b_i.floor()
-                    b_u = b_i.ceil()
-                    b_m = torch.zeros(config.batch_size*config.num_agents, atom_num).to(self.device)
-                    temp = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
-                    b_m.scatter_add_(1, b_l.long(), temp * (b_u - b_i))
-                    b_m.scatter_add_(1, b_u.long(), temp * (b_i - b_l))
+                    b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps)
+                    b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
+                    b_next_dist = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
 
-                b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
-
-                kl_error = (-b_q*b_m).sum(dim=1).reshape(config.batch_size, config.num_agents).mean(dim=1)
-
-                priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
-                loss = kl_error.mean()
 
             else:
                 with torch.no_grad():
@@ -314,8 +295,6 @@ class Actor:
         """ Generate training batch sample """
         done = False
 
-        if self.distributional:
-            vrange = torch.linspace(-5, 5, 51)
 
         # if use imitation learning
         imitation = True if random.random() < self.imitation_ratio else False
@@ -338,7 +317,7 @@ class Actor:
                 with torch.no_grad():
                     q_val = self.model.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
                     if self.distributional:
-                        q_val = (q_val.exp() * vrange).sum(2)
+                        q_val = q_val.mean(dim=2)
 
             else:
                 # sample action
@@ -347,7 +326,7 @@ class Actor:
                     q_val = self.model.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
 
                     if self.distributional:
-                        q_val = (q_val.exp() * vrange).sum(2)
+                        q_val = q_val.mean(dim=2)
 
                     actions = q_val.argmax(1).tolist()
 
@@ -375,7 +354,7 @@ class Actor:
                     with torch.no_grad():
                         q_val = self.model.step(torch.FloatTensor(next_obs_pos[0]), torch.FloatTensor(next_obs_pos[1]))
                         if self.distributional:
-                            q_val = (q_val.exp() * vrange).sum(2)
+                            q_val = q_val.mean(dim=2)
                     buffer.finish(q_val)
 
                 self.buffer.add.remote(buffer)

@@ -54,6 +54,7 @@ class Network(nn.Module):
         self.pos_dim = pos_dim
         self.latent_dim = obs_latent_dim + pos_latent_dim
         self.distributional = distributional
+        self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
@@ -91,8 +92,8 @@ class Network(nn.Module):
 
         # dueling q structure
         if distributional:
-            self.adv = nn.Linear(self.latent_dim, 5*51)
-            self.state = nn.Linear(self.latent_dim, 1*51)
+            self.adv = nn.Linear(self.latent_dim, 5*self.num_quant)
+            self.state = nn.Linear(self.latent_dim, 1*self.num_quant)
         else:
             self.adv = nn.Linear(self.latent_dim, 5)
             self.state = nn.Linear(self.latent_dim, 1)
@@ -121,10 +122,10 @@ class Network(nn.Module):
         state_val = self.state(self.hidden)
 
         if self.distributional:
-            adv_val = adv_val.view(-1, 5, 51)
+            adv_val = adv_val.view(-1, 5, self.num_quant)
             state_val = state_val.unsqueeze(1)
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            q_val = log_softmax(q_val, -1)
+
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
@@ -164,10 +165,10 @@ class Network(nn.Module):
         state_val = self.state(hidden)
 
         if self.distributional:
-            adv_val = adv_val.view(-1, 5, 51)
+            adv_val = adv_val.view(-1, 5, self.N)
             state_val = state_val.unsqueeze(1)
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            q_val = log_softmax(q_val, -1)
+
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
