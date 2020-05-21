@@ -70,10 +70,7 @@ class GlobalBuffer:
 
             self.buffer[self.ptr] = buffer
 
-            # print('tree add 0')
             self.priority_tree.update(self.ptr, buffer.priority)
-            # print('tree add 1')
-            # print('ptr: {}, current size: {}, add priority: {}, current: {}'.format(self.ptr, self.size, buffer.priority, self.priority_tree.sum()))
 
             self.ptr = (self.ptr+1) % self.capacity
 
@@ -192,16 +189,17 @@ class Learner:
         self.done = False
         self.loss = 0
 
+        self.store_weights()
+
+    def get_weights(self):
+        return self.weights_id
+
+    def store_weights(self):
         state_dict = self.model.state_dict()
         for k, v in state_dict.items():
             state_dict[k] = v.cpu()
-        weight_id = ray.put(state_dict)
-        self.weight_id = weight_id
-
-
-    def get_weights(self):
-        return self.weight_id
-
+        weights_id = ray.put(state_dict)
+        self.weights_id = weights_id
 
     def run(self):
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
@@ -262,7 +260,6 @@ class Learner:
 
                 loss = (weights * self.huber_loss(abs_td_error)).mean()
 
-
             self.optimizer.zero_grad()
 
             loss.backward()
@@ -278,11 +275,7 @@ class Learner:
             # self.scheduler.step()
 
             # store new weight in shared memory
-            state_dict = self.model.state_dict()
-            for k, v in state_dict.items():
-                state_dict[k] = v.cpu()
-            weights_id = ray.put(state_dict)
-            self.weights_id = weights_id
+            self.store_weights()
 
             self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
 
