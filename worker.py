@@ -181,8 +181,8 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=6.25e-5)
-        # self.scheduler = MultiStepLR(self.optimizer, milestones=[5000,30000,40000,80000], gamma=0.5)
+        self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[5000,55000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.done = False
@@ -252,7 +252,7 @@ class Learner:
             # scaler.step(optimizer)
             # scaler.update()
 
-            # self.scheduler.step()
+            self.scheduler.step()
 
             # store new weight in shared memory
             self.store_weights()

@@ -153,13 +153,16 @@ class LocalBuffer:
 
         if self.imitation:
             for i in range(self.size):
-                reward = np.sum(self.rew_buf[i:self.size]*discounts[:self.size-i], axis=0)
+                # n-steps forward = 4
+                forward = min(4, self.size-i)
+                reward = np.sum(self.rew_buf[i:i+forward]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward], axis=1)
                 q_val = self.q_buf[i,[0,1],self.act_buf[i]]
                 priorities[i] = np.abs(reward-q_val)
             priorities = np.mean(priorities, axis=1)
 
         else:
             for i in range(self.size):
+                # forward = 1
                 reward = self.rew_buf[i]+0.99*np.max(self.q_buf[i+1], axis=1)
                 q_val = self.q_buf[i,[0,1],self.act_buf[i]]
                 priorities[i] = np.abs(reward-q_val)
@@ -190,7 +193,7 @@ class LocalBuffer:
     def _encode_sample(self, idx):
 
         if self.imitation:
-            # use Monte Carlo method if it's imitation
+            # n-step forward = 4
             forward = min(4, self.size-idx)
             reward = np.sum(self.rew_buf[idx:idx+forward]*discounts[:forward], axis=0)
 
@@ -216,10 +219,10 @@ class LocalBuffer:
             pos = np.pad(pos, ((0,0),(0,pad_len),(0,0)))
 
         # next obs and next pos
-        next_bt_steps = min(idx+2, config.bt_steps)
-        next_obs = np.swapaxes(self.obs_buf[idx+2-next_bt_steps:idx+2], 0, 1)
+        next_bt_steps = min(idx+1+forward, config.bt_steps)
+        next_obs = np.swapaxes(self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
         # next_obs = next_obs.reshape(self.num_agents*next_bt_steps, *config.obs_shape)
-        next_pos = np.swapaxes(self.pos_buf[idx+2-next_bt_steps:idx+2], 0, 1)
+        next_pos = np.swapaxes(self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
         # next_pos = next_pos.reshape(self.num_agents*next_bt_steps, 4)
         if next_bt_steps < config.bt_steps:
             pad_len = config.bt_steps-next_bt_steps
