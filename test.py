@@ -17,6 +17,7 @@ np.random.seed(0)
 random.seed(0)
 test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 
 def create_test(num_agents:Union[int,list,tuple]):
 
@@ -62,14 +63,14 @@ def test_model(num_agents, test_case='test2.pkl'):
 
     model_name = config.save_interval
     while os.path.exists('./models/{}.pth'.format(model_name)):
-        state_dict = torch.load('./models/{}.pth'.format(model_name))
+        state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
         case = 2
         show = False
         show_steps = 30
-        
+
         fail = 0
         optimal = 0
 

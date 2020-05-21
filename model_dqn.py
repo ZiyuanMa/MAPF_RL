@@ -126,11 +126,9 @@ class Network(nn.Module):
         self.hidden = None
 
         for _, m in self.named_modules():
-            if isinstance(m, nn.Linear):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
 
     def step(self, obs, pos):
         

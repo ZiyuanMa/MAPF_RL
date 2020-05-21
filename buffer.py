@@ -38,7 +38,7 @@ class SumTree:
                 self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
             
             # check
-            self.sum()
+            assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
 
 
     def sum(self):

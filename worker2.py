@@ -240,8 +240,7 @@ class Learner:
                 b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps)[torch.arange(config.batch_size*config.num_agents), b_action.squeeze(1), :]
 
                 kl_error = (-b_q*b_m).sum(dim=1).reshape(config.batch_size, config.num_agents).mean(dim=1)
-                # kl_error = kl_div(b_q, b_m, reduction='none').sum(dim=1).reshape(batch_size, config.num_agents).mean(dim=1)
-                # use kl error as priorities as proposed by Rainbow
+
                 priorities = kl_error.detach().cpu().clamp(1e-6).numpy()
                 loss = kl_error.mean()
 
@@ -289,19 +288,16 @@ class Learner:
 
             self.counter += 1
 
-            # update target net
-            if i % 1250 == 0:
+            # update target net, save model
+            if i % 2000 == 0:
                 self.tar_model.load_state_dict(self.model.state_dict())
-                
-            # save model
-            if i % 5000 == 0:
                 torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
 
         self.done = True
     def huber_loss(self, abs_td_error):
         flag = (abs_td_error < 1).float()
         return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
-        
+
     def stats(self, interval:int):
         print('updates: {}'.format(self.counter))
         print('loss: {}'.format(self.loss))
@@ -350,7 +346,7 @@ class Actor:
                 with torch.no_grad():
                     q_val = self.model.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
                     if self.distributional:
-                            q_val = (q_val.exp() * vrange).sum(2)
+                        q_val = (q_val.exp() * vrange).sum(2)
 
             else:
                 # sample action
@@ -398,10 +394,7 @@ class Actor:
                 self.model.reset()
                 obs_pos = self.env.reset()
 
-                # load weights from learner
-                weights_id = ray.get(self.learner.get_weights.remote())
-                weights = ray.get(weights_id)
-                self.model.load_state_dict(weights)
+                self.update_weights()
 
                 imitation = True if random.random() < self.imitation_ratio else False
                 if imitation:
@@ -414,5 +407,9 @@ class Actor:
                 else:
                     buffer = LocalBuffer(obs_pos, False)
 
-        
+    def update_weights(self):
+        '''load weights from learner'''
+        weights_id = ray.get(self.learner.get_weights.remote())
+        weights = ray.get(weights_id)
+        self.model.load_state_dict(weights)
     

@@ -19,15 +19,14 @@ pos_shape = (4)
 ############################################################
 
 # basic training setting
-save_interval=5000
+save_interval=2000
 gamma=0.99
 batch_size=128
 learning_starts=50000
-target_network_update_freq=5000
+target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
 bt_steps = 32
-dtype = 'float32'
 load_model = None
 
 local_buffer_size = max_steps
