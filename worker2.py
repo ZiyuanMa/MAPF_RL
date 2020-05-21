@@ -60,7 +60,6 @@ class GlobalBuffer:
     def add(self, buffer):
         # update buffer size
         with self.lock:
-            # buffer = ray.get(buffer_id)
             if self.buffer[self.ptr] is not None:
                 self.size -= len(self.buffer[self.ptr])
             self.size += len(buffer)
@@ -379,8 +378,6 @@ class Actor:
                             q_val = (q_val.exp() * vrange).sum(2)
                     buffer.finish(q_val)
 
-
-                # buffer_id = ray.put(buffer)
                 self.buffer.add.remote(buffer)
 
                 done = False

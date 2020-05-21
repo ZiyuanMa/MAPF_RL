@@ -8,9 +8,6 @@ import threading
 
 import config
 
-obs_pad = np.zeros((config.obs_dim, 9, 9), dtype=config.dtype)
-pos_pad = np.zeros((config.pos_dim), dtype=config.dtype)
-
 discounts = np.array([[0.99**i] for i in range(config.max_steps)])
 
 class SumTree:
