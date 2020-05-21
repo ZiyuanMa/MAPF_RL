@@ -2,34 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import log_softmax
-from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
+from torch.nn.utils.rnn import pack_padded_sequence
 import config
-
-# class ResBlock(nn.Module):
-#     def __init__(self, channel):
-#         super().__init__()
-
-#         self.conv1 = nn.Conv2d(channel, channel, kernel_size=3, stride=1, padding=1, bias=False)
-#         self.bn1 = nn.BatchNorm2d(channel)
-
-#         self.conv2 = nn.Conv2d(channel, channel, kernel_size=3, stride=1, padding=1, bias=False)
-#         self.bn2 = nn.BatchNorm2d(channel)
-
-#     def forward(self, x):
-#         identity = x
-
-#         out = self.conv1(x)
-#         out = self.bn1(out)
-#         out = F.relu(out)
-
-#         out = self.conv2(out)
-#         out = self.bn2(out)
-
-#         out += identity
-
-#         out = F.relu(out)
-
-#         return out
 
 class ResBlock(nn.Module):
     def __init__(self, channel, type='linear', bn=False):

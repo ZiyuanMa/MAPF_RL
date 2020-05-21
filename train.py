@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import random
 
-from worker2 import GlobalBuffer, Learner, Actor
+from worker import GlobalBuffer, Learner, Actor
 import time
 import ray
 import threading

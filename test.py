@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from environment import Environment
-from model_dqn import Network
+from model import Network
 from search import find_path
 import pickle
 import os
@@ -126,20 +126,6 @@ def test_model(num_agents, test_case='test2.pkl'):
         print('optimal: %.4f' %o_rate)
 
         model_name += config.save_interval
-
-        # if test_case != 'test.pkl':
-        #     finish_rate.append(f_rate)
-        #     optimal_rate.append(o_rate)
-
-    # plt.xlabel('number of agents')
-    # plt.ylabel('percentage')
-
-    # plt.plot(x, finish_rate, label='finish_rate')
-    # plt.plot(x, optimal_rate, label='optimal_rate')
-    # plt.xticks(range(2,6))
-    
-    # plt.legend()
-    # plt.show()
 
     
 

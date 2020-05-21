@@ -12,7 +12,7 @@ from typing import List
 import threading
 
 import config
-from model_dqn import Network
+from model import Network
 from environment import Environment
 from buffer import SumTree, LocalBuffer
 from search import find_path
