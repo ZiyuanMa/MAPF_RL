@@ -191,12 +191,18 @@ class LocalBuffer:
 
         if self.imitation:
             # use Monte Carlo method if it's imitation
-            forward = self.size - idx
-            reward = np.sum(self.rew_buf[idx:self.size]*discounts[:self.size-idx], axis=0)
+            forward = min(4, self.size-idx)
+            reward = np.sum(self.rew_buf[idx:idx+forward]*discounts[:forward], axis=0)
+
         else:
             # self play
             forward = 1
             reward = self.rew_buf[idx]
+
+        if self.done and idx+forward == self.size:
+            done = True
+        else:
+            done = False
 
         # obs and pos
         bt_steps = min(idx+1, config.bt_steps)
@@ -221,12 +227,12 @@ class LocalBuffer:
             next_pos = np.pad(next_pos, ((0,0),(0,pad_len),(0,0)))
 
         # define other part
-        done = [ self.done for _ in range(self.num_agents) ]
+        dones = [ done for _ in range(self.num_agents) ]
         steps = [ forward for _ in range(self.num_agents) ]
         bt_steps = [ bt_steps for _ in range(self.num_agents) ]
         next_bt_steps = [ next_bt_steps for _ in range(self.num_agents) ]
 
-        return obs, pos, self.act_buf[idx].tolist(), reward.tolist(), next_obs, next_pos, done, steps, bt_steps, next_bt_steps
+        return obs, pos, self.act_buf[idx].tolist(), reward.tolist(), next_obs, next_pos, dones, steps, bt_steps, next_bt_steps
 
 
 

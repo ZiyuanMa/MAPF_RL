@@ -61,13 +61,13 @@ def test_model(num_agents, test_case='test2.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = config.save_interval
+    model_name = config.save_interval*30
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 2
+        case = 37
         show = False
         show_steps = 30
 

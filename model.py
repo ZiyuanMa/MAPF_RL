@@ -62,9 +62,6 @@ class Network(nn.Module):
 
             ResBlock(cnn_channel, type='cnn'),
 
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
-            nn.ReLU(True),
-
             ResBlock(cnn_channel, type='cnn'),
 
             nn.Conv2d(cnn_channel, 8, 1, 1),
@@ -84,6 +81,8 @@ class Network(nn.Module):
         )
 
         self.concat_encoder = nn.Sequential(
+            nn.Linear(self.latent_dim, self.latent_dim),
+            nn.ReLU(True),
             ResBlock(self.latent_dim), 
             # ResBlock(self.latent_dim),
         )
