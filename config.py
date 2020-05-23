@@ -11,7 +11,7 @@ reward_fn = dict(move=-0.075,
                 finish=3)
 
 obs_shape = (2,9,9)
-pos_shape = (4)
+pos_shape = (4,)
 
 
 ############################################################
@@ -21,7 +21,7 @@ pos_shape = (4)
 # basic training setting
 save_interval=2000
 gamma=0.99
-batch_size=128
+batch_size=256
 learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'

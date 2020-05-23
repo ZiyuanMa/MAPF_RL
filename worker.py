@@ -92,15 +92,15 @@ class GlobalBuffer:
                 
                 b_obs.append(obs)
                 b_pos.append(pos)
-                b_action += action
-                b_reward += reward
+                b_action.append(action)
+                b_reward.append(reward)
                 b_next_obs.append(next_obs)
                 b_next_pos.append(next_pos)
 
-                b_done += done
-                b_steps += steps
-                b_bt_steps += bt_steps
-                b_next_bt_steps += next_bt_steps
+                b_done.append(done)
+                b_steps.append(steps)
+                b_bt_steps.append(bt_steps)
+                b_next_bt_steps.append(next_bt_steps)
 
                 idxes.append(global_idx*config.max_steps+local_idx)
                 priorities.append(priority)
@@ -110,12 +110,12 @@ class GlobalBuffer:
             weights = np.power(priorities/min_p, -self.beta)
 
             data = (
-                torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
-                torch.from_numpy(np.concatenate(b_pos).astype(np.float32)),
+                torch.from_numpy(np.stack(b_obs).astype(np.float32)),
+                torch.from_numpy(np.stack(b_pos).astype(np.float32)),
                 torch.LongTensor(b_action).unsqueeze(1),
                 torch.FloatTensor(b_reward).unsqueeze(1),
-                torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)),
-                torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)),
+                torch.from_numpy(np.stack(b_next_obs).astype(np.float32)),
+                torch.from_numpy(np.stack(b_next_pos).astype(np.float32)),
 
                 torch.FloatTensor(b_done).unsqueeze(1),
                 torch.FloatTensor(b_steps).unsqueeze(1),
@@ -234,7 +234,7 @@ class Learner:
 
                 b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
 
-                abs_td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_)).abs().reshape(config.batch_size, config.num_agents).mean(dim=1, keepdim=True)
+                abs_td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_)).abs()
 
                 priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
 
@@ -330,9 +330,8 @@ class Actor:
 
                     actions = q_val.argmax(1).tolist()
 
-                    for i in range(len(actions)):
-                        if random.random() < self.epsilon:
-                            actions[i] = np.random.randint(0, 5)
+                    if random.random() < self.epsilon:
+                        actions[0] = np.random.randint(0, 5)
 
             # take action in env
             next_obs_pos, r, done, _ = self.env.step(actions)

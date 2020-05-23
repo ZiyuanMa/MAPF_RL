@@ -8,7 +8,7 @@ import threading
 
 import config
 
-discounts = np.array([[0.99**i] for i in range(config.max_steps)])
+discounts = np.array([ 0.99**i for i in range(config.max_steps)])
 
 class SumTree:
     def __init__(self, capacity, priorities=None):
@@ -149,24 +149,25 @@ class LocalBuffer:
         if self.imitation:
             assert self.done, 'size {}'.format(self.size)
 
-        priorities = np.zeros((self.size, self.num_agents), dtype=np.float32)
+        priorities = np.zeros((self.size), dtype=np.float32)
 
         if self.imitation:
             for i in range(self.size):
                 # n-steps forward = 4
                 forward = min(4, self.size-i)
-                reward = np.sum(self.rew_buf[i:i+forward]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward], axis=1)
-                q_val = self.q_buf[i,[0,1],self.act_buf[i]]
+                # print(self.rew_buf[i:i+forward, 0])
+                # print(self.rew_buf[i:i+forward, 0]*discounts[:forward])
+                reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
+                q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
+
                 priorities[i] = np.abs(reward-q_val)
-            priorities = np.mean(priorities, axis=1)
 
         else:
             for i in range(self.size):
                 # forward = 1
-                reward = self.rew_buf[i]+0.99*np.max(self.q_buf[i+1], axis=1)
-                q_val = self.q_buf[i,[0,1],self.act_buf[i]]
+                reward = self.rew_buf[i, 0]+0.99*np.max(self.q_buf[i+1, 0], axis=0)
+                q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
                 priorities[i] = np.abs(reward-q_val)
-            priorities = np.mean(priorities, axis=1)
 
         self.priority_tree = SumTree(self.capacity, priorities)
         self.priority = self.priority_tree.sum()
@@ -195,12 +196,12 @@ class LocalBuffer:
         if self.imitation:
             # n-step forward = 4
             forward = min(4, self.size-idx)
-            reward = np.sum(self.rew_buf[idx:idx+forward]*discounts[:forward], axis=0)
+            reward = np.sum(self.rew_buf[idx:idx+forward, 0]*discounts[:forward], axis=0)
 
         else:
             # self play
             forward = 1
-            reward = self.rew_buf[idx]
+            reward = self.rew_buf[idx, 0]
 
         if self.done and idx+forward == self.size:
             done = True
@@ -209,28 +210,27 @@ class LocalBuffer:
 
         # obs and pos
         bt_steps = min(idx+1, config.bt_steps)
-        obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
-        pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
+        # obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
+        # pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
+        obs = self.obs_buf[idx+1-bt_steps:idx+1, 0]
+        pos = self.pos_buf[idx+1-bt_steps:idx+1, 0]
+
 
         if bt_steps < config.bt_steps:
             pad_len = config.bt_steps-bt_steps
-            obs = np.pad(obs, ((0,0),(0,pad_len),(0,0),(0,0),(0,0)))
-            pos = np.pad(pos, ((0,0),(0,pad_len),(0,0)))
+            obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
+            pos = np.pad(pos, ((0,pad_len),(0,0)))
 
         # next obs and next pos
         next_bt_steps = min(idx+1+forward, config.bt_steps)
-        next_obs = np.swapaxes(self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
-        next_pos = np.swapaxes(self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
+        # next_obs = np.swapaxes(self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
+        # next_pos = np.swapaxes(self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
+        next_obs = self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward, 0]
+        next_pos = self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward, 0]
 
         if next_bt_steps < config.bt_steps:
             pad_len = config.bt_steps-next_bt_steps
-            next_obs = np.pad(next_obs, ((0,0),(0,pad_len),(0,0),(0,0),(0,0)))
-            next_pos = np.pad(next_pos, ((0,0),(0,pad_len),(0,0)))
+            next_obs = np.pad(next_obs, ((0,pad_len),(0,0),(0,0),(0,0)))
+            next_pos = np.pad(next_pos, ((0,pad_len),(0,0)))
 
-        # define other part
-        dones = [ done for _ in range(self.num_agents) ]
-        steps = [ forward for _ in range(self.num_agents) ]
-        bt_steps = [ bt_steps for _ in range(self.num_agents) ]
-        next_bt_steps = [ next_bt_steps for _ in range(self.num_agents) ]
-
-        return obs, pos, self.act_buf[idx].tolist(), reward.tolist(), next_obs, next_pos, dones, steps, bt_steps, next_bt_steps
+        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps
