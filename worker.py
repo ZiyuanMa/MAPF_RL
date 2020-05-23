@@ -8,7 +8,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 from copy import deepcopy
-from typing import List
+from typing import List,Tuple
 import threading
 
 import config
@@ -58,8 +58,9 @@ class GlobalBuffer:
 
 
     def add(self, buffer):
-        # update buffer size
+
         with self.lock:
+            # update buffer size
             if self.buffer[self.ptr] is not None:
                 self.size -= len(self.buffer[self.ptr])
             self.size += len(buffer)
@@ -73,10 +74,11 @@ class GlobalBuffer:
 
             self.ptr = (self.ptr+1) % self.capacity
 
-    def sample_batch(self, batch_size):
+    def sample_batch(self, batch_size:int) -> Tuple:
+        if len(self) < config.learning_starts:
+            raise Exception('buffer size is not large enough')
+
         with self.lock:
-            if len(self) < config.learning_starts:
-                raise Exception('buffer size is not large enough')
 
             total_p = self.priority_tree.sum()
 
@@ -105,7 +107,8 @@ class GlobalBuffer:
                 idxes.append(global_idx*config.max_steps+local_idx)
                 priorities.append(priority)
 
-            priorities = np.array(priorities, dtype=np.float32)
+            # importance sampling weights
+            priorities = np.asarray(priorities, dtype=np.float32)
             min_p = np.min(priorities)
             weights = np.power(priorities/min_p, -self.beta)
 
@@ -122,18 +125,16 @@ class GlobalBuffer:
                 b_bt_steps,
                 b_next_bt_steps,
 
-                idxes,
+                np.asarray(idxes),
                 torch.from_numpy(weights).unsqueeze(1),
                 self.ptr
             )
 
             return data
 
-    def update_priorities(self, idxes:List[int], priorities:List[float], old_ptr):
+    def update_priorities(self, idxes:np.ndarray, priorities:np.ndarray, old_ptr:int):
         """Update priorities of sampled transitions"""
         with self.lock:
-            idxes = np.asarray(idxes)
-            priorities = np.asarray(priorities)
 
             # discard the idx that already been discarded during training
             if self.ptr > old_ptr:
@@ -150,16 +151,16 @@ class GlobalBuffer:
             global_idxes = idxes // config.max_steps
             local_idxes = idxes % config.max_steps
 
+            # update priority tree in each local buffer
             for global_idx, local_idx, priority in zip(global_idxes, local_idxes, priorities):
                 assert priority > 0
-
                 self.buffer[global_idx].update_priority(local_idx, priority)
 
+            # update priority tree in global buffer
             global_idxes = np.unique(global_idxes)
             new_p = []
             for global_idx in global_idxes:
                 new_p.append(self.buffer[global_idx].priority)
-
             new_p = np.asarray(new_p)
             self.priority_tree.batch_update(global_idxes, new_p)
 
@@ -265,6 +266,9 @@ class Learner:
             if i % 2000 == 0:
                 self.tar_model.load_state_dict(self.model.state_dict())
                 torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
+            
+            if i == 5000:
+                config.imitation_ratio = 0
 
         self.done = True
     def huber_loss(self, abs_td_error):
@@ -288,7 +292,7 @@ class Actor:
         self.learner = learner
         self.buffer = buffer
         self.distributional = config.distributional
-        self.imitation_ratio = config.imitation_ratio
+        # self.imitation_ratio = config.imitation_ratio
         self.max_steps = config.max_steps
 
     def run(self):
@@ -297,7 +301,7 @@ class Actor:
 
 
         # if use imitation learning
-        imitation = True if random.random() < self.imitation_ratio else False
+        imitation = True if random.random() < config.imitation_ratio else False
         if imitation:
             imitation_actions = find_path(self.env)
             while imitation_actions is None:
@@ -364,7 +368,7 @@ class Actor:
 
                 self.update_weights()
 
-                imitation = True if random.random() < self.imitation_ratio else False
+                imitation = True if random.random() < config.imitation_ratio else False
                 if imitation:
                     imitation_actions = find_path(self.env)
                     while imitation_actions is None:
