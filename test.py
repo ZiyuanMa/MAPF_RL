@@ -1,12 +1,12 @@
 import numpy as np
 import torch
 from environment import Environment
-from model_dqn import Network
+from model import Network
 from search import find_path
 import pickle
 import os
 import matplotlib as mpl
-mpl.use('TkAgg') 
+mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import random
 import argparse
@@ -17,6 +17,7 @@ np.random.seed(0)
 random.seed(0)
 test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 
 def create_test(num_agents:Union[int,list,tuple]):
 
@@ -47,104 +48,84 @@ def create_test(num_agents:Union[int,list,tuple]):
         pickle.dump(tests, f)
 
 
-def test_model(num_agents):
+def test_model(num_agents, test_case='test2.pkl'):
 
 
     network = Network()
     network.eval()
     network.to(device)
-
-    test_cases = ['test2.pkl']
-
-    # x = [i for i in range(2,6)]
-    # finish_rate = []
-    # optimal_rate = []
     
     vrange = torch.linspace(-5, 5, 51).to(device)
 
-    for test_case in test_cases:
 
-        with open(test_case, 'rb') as f:
-            tests = pickle.load(f)
+    with open(test_case, 'rb') as f:
+        tests = pickle.load(f)
 
-        model_name = config.save_interval * 2
-        while os.path.exists('./models/{}.pth'.format(model_name)):
-            state_dict = torch.load('./models/{}.pth'.format(model_name))
-            network.load_state_dict(state_dict)
-            env = Environment()
+    model_name = config.save_interval
+    while os.path.exists('./models/{}.pth'.format(model_name)):
+        state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
+        network.load_state_dict(state_dict)
+        env = Environment()
 
-            case = 7
-            show = False
-            show_steps = 30
-            fail = 0
-            optimal = 0
+        case = 54
+        show = False
+        show_steps = 30
 
-            for i in range(test_num):
-                env.load(tests['maps'][i], tests['agents'][i], tests['goals'][i])
-                
-                done = False
-                network.reset()
+        fail = 0
+        optimal = 0
 
-                while not done and env.steps < config.max_steps:
-                    if i == case and show and env.steps < show_steps:
-                        env.render()
-
-                    obs_pos = env.observe()
-                    # obs = np.expand_dims(obs, axis=0)
-
-                    with torch.no_grad():
-
-                        q_vals = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
-                        if network.distributional:
-                            q_vals = (q_vals.exp() * vrange).sum(2)
-
-                    if i == case and show and env.steps < show_steps:
-                        print(q_vals)
-
-                    action = torch.argmax(q_vals, 1).tolist()
-
-                    if i == case and show and env.steps < show_steps:
-                        print(action)
-
-
-                    _, _, done, _ = env.step(action)
-                    # print(done)
-
-
-
-                if not np.array_equal(env.agents_pos, env.goals_pos):
-                    fail += 1
-                    if show:
-                        print(i)
-
-                if env.steps == tests['opt_steps'][i]:
-                    optimal += 1
-
-                if i == case and show:
-                    env.close()
+        for i in range(test_num):
+            env.load(tests['maps'][i], tests['agents'][i], tests['goals'][i])
             
-            f_rate = (test_num-fail)/test_num
-            o_rate = optimal/test_num
+            done = False
+            network.reset()
 
-            print('--------------{}---------------'.format(model_name))
-            print('finish: %.4f' %f_rate)
-            print('optimal: %.4f' %o_rate)
+            while not done and env.steps < config.max_steps:
+                if i == case and show and env.steps < show_steps:
+                    env.render()
 
-            model_name += config.save_interval
+                obs_pos = env.observe()
+                # obs = np.expand_dims(obs, axis=0)
 
-        # if test_case != 'test.pkl':
-        #     finish_rate.append(f_rate)
-        #     optimal_rate.append(o_rate)
+                with torch.no_grad():
 
-    # plt.xlabel('number of agents')
-    # plt.ylabel('percentage')
+                    q_vals = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
+                    if network.distributional:
+                        q_vals = (q_vals.exp() * vrange).sum(2)
 
-    # plt.plot(x, finish_rate, label='finish_rate')
-    # plt.plot(x, optimal_rate, label='optimal_rate')
-    # plt.xticks(range(2,6))
-    
-    # plt.legend()
-    # plt.show()
+                if i == case and show and env.steps < show_steps:
+                    print(q_vals)
+
+                action = torch.argmax(q_vals, 1).tolist()
+
+                if i == case and show and env.steps < show_steps:
+                    print(action)
+
+
+                _, _, done, _ = env.step(action)
+                # print(done)
+
+
+
+            if not np.array_equal(env.agents_pos, env.goals_pos):
+                fail += 1
+                if show:
+                    print(i)
+
+            if env.steps == tests['opt_steps'][i]:
+                optimal += 1
+
+            if i == case and show:
+                env.close()
+        
+        f_rate = (test_num-fail)/test_num
+        o_rate = optimal/test_num
+
+        print('--------------{}---------------'.format(model_name))
+        print('finish: %.4f' %f_rate)
+        print('optimal: %.4f' %o_rate)
+
+        model_name += config.save_interval
 
     
 

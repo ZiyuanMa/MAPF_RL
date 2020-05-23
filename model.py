@@ -5,32 +5,6 @@ from torch.nn.functional import log_softmax
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 import config
 
-# class ResBlock(nn.Module):
-#     def __init__(self, channel):
-#         super().__init__()
-
-#         self.conv1 = nn.Conv2d(channel, channel, kernel_size=3, stride=1, padding=1, bias=False)
-#         self.bn1 = nn.BatchNorm2d(channel)
-
-#         self.conv2 = nn.Conv2d(channel, channel, kernel_size=3, stride=1, padding=1, bias=False)
-#         self.bn2 = nn.BatchNorm2d(channel)
-
-#     def forward(self, x):
-#         identity = x
-
-#         out = self.conv1(x)
-#         out = self.bn1(out)
-#         out = F.relu(out)
-
-#         out = self.conv2(out)
-#         out = self.bn2(out)
-
-#         out += identity
-
-#         out = F.relu(out)
-
-#         return out
-
 class ResBlock(nn.Module):
     def __init__(self, channel, type='linear', bn=False):
         super().__init__()
@@ -80,6 +54,7 @@ class Network(nn.Module):
         self.pos_dim = pos_dim
         self.latent_dim = obs_latent_dim + pos_latent_dim
         self.distributional = distributional
+        self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1, bias=False),
@@ -101,21 +76,21 @@ class Network(nn.Module):
         self.pos_encoder = nn.Sequential(
             nn.Linear(pos_dim, pos_latent_dim),
             nn.ReLU(True),
-            nn.Linear(pos_latent_dim, pos_latent_dim),
-            nn.ReLU(True),
+            ResBlock(pos_latent_dim),
         )
 
         self.concat_encoder = nn.Sequential(
+
             ResBlock(self.latent_dim), 
-            # ResBlock(self.latent_dim),
+            ResBlock(self.latent_dim),
         )
 
         self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
-            self.adv = nn.Linear(self.latent_dim, 5*51)
-            self.state = nn.Linear(self.latent_dim, 1*51)
+            self.adv = nn.Linear(self.latent_dim, 5*self.num_quant)
+            self.state = nn.Linear(self.latent_dim, 1*self.num_quant)
         else:
             self.adv = nn.Linear(self.latent_dim, 5)
             self.state = nn.Linear(self.latent_dim, 1)
@@ -123,36 +98,9 @@ class Network(nn.Module):
         self.hidden = None
 
         for _, m in self.named_modules():
-            if isinstance(m, nn.Linear):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Conv2d):
-                nn.init.xavier_uniform_(m.weight)
-
-    def forward(self, obs, pos):
-
-        if obs.dim() == 5:
-            batch_size = obs.size(0)
-            
-            obs = obs.view(-1, self.obs_dim, 9, 9)
-            pos = pos.view(-1, self.pos_dim)
-        else:
-            batch_size = 1
-
-        obs_latent = self.obs_encoder(obs)
-        pos_latent = self.pos_encoder(pos)
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
-
-        adv_val = self.adv(latent)
-        state_val = self.state(latent)
-
-        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-
-        if batch_size != 1:
-            q_val = q_val.view(batch_size, -1, 5)
-
-        return q_val
 
     def step(self, obs, pos):
         
@@ -172,10 +120,10 @@ class Network(nn.Module):
         state_val = self.state(self.hidden)
 
         if self.distributional:
-            adv_val = adv_val.view(-1, 5, 51)
+            adv_val = adv_val.view(-1, 5, self.num_quant)
             state_val = state_val.unsqueeze(1)
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            q_val = log_softmax(q_val, -1)
+
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
@@ -187,10 +135,10 @@ class Network(nn.Module):
         self.hidden = None
 
     def bootstrap(self, obs, pos, steps):
-        # batch_size = obs.size(0)
-        # seq_length = obs.size(1)
-        # obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
-        # pos = pos.contiguous().view(-1, self.pos_dim)
+        batch_size = obs.size(0)
+
+        obs = obs.view(-1, self.obs_dim, 9, 9)
+        pos = pos.view(-1, self.pos_dim)
 
 
         obs_latent = self.obs_encoder(obs)
@@ -199,17 +147,10 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
-        # pad_latent = torch.zeros(steps.size(0), steps.max().item(), self.latent_dim).to(torch.device('cuda'))
+        # latent = latent.split(steps)
+        # latent = pad_sequence(latent, batch_first=True)
 
-        # start = 0
-        # for i, seq_len in enumerate(steps):
-        #     seq_len = seq_len.item()
-        #     pad_latent[i, :seq_len] = latent[start:start+seq_len]
-        #     start += seq_len
-        # latent = pad_latent
-
-        latent = latent.split(steps)
-        latent = pad_sequence(latent, batch_first=True)
+        latent = latent.view(batch_size, config.bt_steps, self.latent_dim)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
@@ -222,10 +163,10 @@ class Network(nn.Module):
         state_val = self.state(hidden)
 
         if self.distributional:
-            adv_val = adv_val.view(-1, 5, 51)
+            adv_val = adv_val.view(-1, 5, self.N)
             state_val = state_val.unsqueeze(1)
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            q_val = log_softmax(q_val, -1)
+
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 

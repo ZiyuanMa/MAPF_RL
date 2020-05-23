@@ -10,35 +10,33 @@ reward_fn = dict(move=-0.075,
                 collision=-0.5,
                 finish=3)
 
+obs_shape = (2,9,9)
+pos_shape = (4,)
+
 
 ############################################################
 ####################         DQN        ####################
 ############################################################
 
 # basic training setting
-training_timesteps = 1250000
-save_interval=50000
+save_interval=2000
 gamma=0.99
-batch_size_dqn=32
-train_freq=4
+batch_size=256
 learning_starts=50000
-target_network_update_freq=5000
-buffer_size=131072
+target_network_update_freq=2000
 save_path='./models'
-max_steps = 200
-bt_steps = 32
-dtype = 'float32'
+max_steps = 256
+bt_steps = 48
 load_model = None
 
-# gradient norm clipping
-grad_norm_dqn=10
+local_buffer_size = max_steps
+global_buffer_size = 2048
 
-# epsilon greedy
-explore_start_eps = 1.0
-explore_final_eps = 0.02
+# gradient norm clipping
+grad_norm_dqn=40
 
 # distributional dqn
-distributional = True
+distributional = False
 
 # prioritized replay
 prioritized_replay_alpha=0.6
@@ -48,7 +46,7 @@ prioritized_replay_beta=0.4
 double_q = False
 
 # imitation learning
-imitation_ratio = 0.6
+imitation_ratio = 0.3
 
 # dqn network setting
 cnn_channel = 64
