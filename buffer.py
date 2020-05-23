@@ -94,19 +94,17 @@ class SumTree:
 
 
 class LocalBuffer:
-    def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps, alpha=config.prioritized_replay_alpha, beta=config.prioritized_replay_beta):
+    def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps, alpha=config.prioritized_replay_alpha):
         """
         Prioritized Replay buffer for each actor
 
         """
-        assert alpha >= 0
         self.alpha = alpha
-        self.beta = beta
 
         self.num_agents = init_obs_pos[0].shape[0]
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros((size+1, self.num_agents, 4), dtype=np.uint8)
+        self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)
         self.act_buf = np.zeros((size, self.num_agents), dtype=np.long)
         self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
         self.q_buf = np.zeros((size+1, self.num_agents, 5), dtype=np.float32)
@@ -146,8 +144,8 @@ class LocalBuffer:
         self.q_buf = self.q_buf[:self.size+1]
 
 
-        if self.imitation:
-            assert self.done, 'size {}'.format(self.size)
+        # if self.imitation:
+        #     assert self.done, 'size {}'.format(self.size)
 
         priorities = np.zeros((self.size), dtype=np.float32)
 
@@ -197,7 +195,6 @@ class LocalBuffer:
             # n-step forward = 4
             forward = min(4, self.size-idx)
             reward = np.sum(self.rew_buf[idx:idx+forward, 0]*discounts[:forward], axis=0)
-
         else:
             # self play
             forward = 1

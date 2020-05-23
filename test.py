@@ -48,7 +48,7 @@ def create_test(num_agents:Union[int,list,tuple]):
         pickle.dump(tests, f)
 
 
-def test_model(num_agents, test_case='test2.pkl'):
+def test_model(num_agents, test_case='test4.pkl'):
 
 
     network = Network()
@@ -61,14 +61,14 @@ def test_model(num_agents, test_case='test2.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = config.save_interval
+    model_name = config.save_interval * 21
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 54
-        show = False
+        case = 0
+        show = True
         show_steps = 30
 
         fail = 0
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='test MAPF model')
 
     parser.add_argument('--mode', type=str, choices=['test', 'create'], default='test', help='create test set or run test set')
-    parser.add_argument('--number', type=int, default=2, help='number of agents in environment')
+    parser.add_argument('--number', type=int, default=4, help='number of agents in environment')
 
     args = parser.parse_args()
 
