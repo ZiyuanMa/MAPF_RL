@@ -17,7 +17,7 @@ np.random.seed(0)
 random.seed(0)
 test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
+# device = torch.device('cpu')
 
 def create_test(num_agents:Union[int,list,tuple]):
 
@@ -61,7 +61,7 @@ def test_model(num_agents, test_case='test4.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = config.save_interval * 21
+    model_name = config.save_interval *  20
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
