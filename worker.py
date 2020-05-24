@@ -207,7 +207,7 @@ class Learner:
 
     def train(self):
 
-        for i in range(1, 100001):
+        for i in range(1, 80001):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
@@ -267,8 +267,8 @@ class Learner:
                 self.tar_model.load_state_dict(self.model.state_dict())
                 torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
             
-            # if i == 5000:
-            #     config.imitation_ratio = 0
+            if i == 10000:
+                config.imitation_ratio = 0
 
         self.done = True
     def huber_loss(self, abs_td_error):
