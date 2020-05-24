@@ -234,18 +234,18 @@ class Environment:
         '''
 
         assert len(actions) == self.num_agents, 'actions number' + str(actions)
-        # assert all([action_idx<config.action_space and action_idx>=0 for action_idx in actions]), 'action index out of range'
+        assert all([action_idx<4 and action_idx>=0 for action_idx in actions]), 'action index out of range'
 
-        check_id = [i for i in range(self.num_agents)]
+        checking_list = [i for i in range(self.num_agents)]
 
         rewards = []
 
         # remove unmoving agent id
-        for agent_id in check_id.copy():
+        for agent_id in checking_list.copy():
 
             if actions[agent_id] == 0:
                 # unmoving
-                check_id.remove(agent_id)
+                checking_list.remove(agent_id)
 
                 if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]):
                     rewards.append(self.reward_fn['stay_on_goal'])
@@ -258,36 +258,34 @@ class Environment:
 
         next_pos = np.copy(self.agents_pos)
 
-        for agent_id in check_id:
+        for agent_id in checking_list:
 
             next_pos[agent_id] += action_list[actions[agent_id]]
 
-
-        for agent_id in check_id.copy():
-
-            # move
-
-            if np.any(next_pos[agent_id]<np.array([0,0])) or np.any(next_pos[agent_id]>=np.asarray(self.map_size)): 
-                # agent out of map bound
+        # first round check, these two conflicts have the heightest priority
+        for agent_id in checking_list.copy():
+            # here assume map is square size
+            if np.any(next_pos[agent_id]<0) or np.any(next_pos[agent_id]>=self.map_length):
+                # agent out of map range
                 rewards[agent_id] = self.reward_fn['collision']
                 next_pos[agent_id] = self.agents_pos[agent_id]
-                check_id.remove(agent_id)
+                checking_list.remove(agent_id)
 
             elif self.map[tuple(next_pos[agent_id])] == 1:
                 # collide obstacle
                 rewards[agent_id] = self.reward_fn['collision']
                 next_pos[agent_id] = self.agents_pos[agent_id]
-                check_id.remove(agent_id)
+                checking_list.remove(agent_id)
 
-        # agent swapping conflict
-        for agent_id in check_id:
+        # second round check, agent swapping conflict
+        for agent_id in checking_list:
             if np.any(np.all(next_pos[agent_id]==self.agents_pos, axis=1)):
 
                 target_agent_id = np.where(np.all(next_pos[agent_id]==self.agents_pos, axis=1))[0].item()
                 # assert len(target_agent_id) == 1, 'target > 1'
 
                 if np.array_equal(next_pos[target_agent_id], self.agents_pos[agent_id]):
-                    assert target_agent_id in check_id, 'not in check'
+                    assert target_agent_id in checking_list, 'not in check'
 
                     next_pos[agent_id] = self.agents_pos[agent_id]
                     rewards[agent_id] = self.reward_fn['collision']
@@ -295,15 +293,15 @@ class Environment:
                     next_pos[target_agent_id] = self.agents_pos[target_agent_id]
                     rewards[target_agent_id] = self.reward_fn['collision']
 
-                    check_id.remove(agent_id)
-                    check_id.remove(target_agent_id)
+                    checking_list.remove(agent_id)
+                    checking_list.remove(target_agent_id)
 
         # agent collision conflict
         flag = False
         while not flag:
             
             flag = True
-            for agent_id in check_id.copy():
+            for agent_id in checking_list.copy():
                 
                 if np.sum(np.all(next_pos==next_pos[agent_id], axis=1)) > 1:
                     # collide agent
@@ -311,13 +309,13 @@ class Environment:
                     collide_agent_id = np.where(np.all(next_pos==next_pos[agent_id], axis=1))[0].tolist()
                     all_in = True
                     for id in collide_agent_id:
-                        if id not in check_id:
+                        if id not in checking_list:
                             all_in =False
                             break
 
                     if not all_in:
                         # agent collide unmoving agent
-                        collide_agent_id = [ id for id in collide_agent_id if id in check_id]
+                        collide_agent_id = [ id for id in collide_agent_id if id in checking_list]
 
                     else:
 
@@ -328,14 +326,14 @@ class Environment:
 
                         collide_agent_id.remove(collide_agent_pos[0][2])
 
-                        # check_id.remove(collide_agent_pos[0][2])
+                        # checking_list.remove(collide_agent_pos[0][2])
 
                     next_pos[collide_agent_id] = self.agents_pos[collide_agent_id]
                     for id in collide_agent_id:
                         rewards[id] = self.reward_fn['collision']
 
                     for id in collide_agent_id:
-                        check_id.remove(id)
+                        checking_list.remove(id)
 
                     flag = False
                     break
