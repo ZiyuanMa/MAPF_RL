@@ -234,28 +234,28 @@ class Environment:
         '''
 
         assert len(actions) == self.num_agents, 'actions number' + str(actions)
-        assert all([action_idx<4 and action_idx>=0 for action_idx in actions]), 'action index out of range'
+        assert all([action_idx<5 and action_idx>=0 for action_idx in actions]), 'action index out of range'
 
         checking_list = [i for i in range(self.num_agents)]
 
         rewards = []
 
         # remove unmoving agent id
-        for agent_id in checking_list:
-
+        for agent_id in checking_list.copy():
             if actions[agent_id] == 0:
                 # unmoving
-                checking_list.remove(agent_id)
 
                 if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]):
                     rewards.append(self.reward_fn['stay_on_goal'])
                 else:
                     rewards.append(self.reward_fn['stay_off_goal'])
+
+                checking_list.remove(agent_id)
             else:
                 # move
                 rewards.append(self.reward_fn['move'])
 
-
+        # assert len(rewards)==len(actions), '{}, {}'.format(len(rewards), len(actions))
         next_pos = np.copy(self.agents_pos)
 
         for agent_id in checking_list:
@@ -263,7 +263,7 @@ class Environment:
             next_pos[agent_id] += action_list[actions[agent_id]]
 
         # first round check, these two conflicts have the heightest priority
-        for agent_id in checking_list:
+        for agent_id in checking_list.copy():
 
             if np.any(next_pos[agent_id]<0) or np.any(next_pos[agent_id]>=self.map_size[0]):
                 # agent out of map range
@@ -278,7 +278,7 @@ class Environment:
                 checking_list.remove(agent_id)
 
         # second round check, agent swapping conflict
-        for agent_id in checking_list:
+        for agent_id in checking_list.copy():
 
             target_agent_id = np.where(np.all(next_pos[agent_id]==self.agents_pos, axis=1))[0]
 
@@ -298,20 +298,21 @@ class Environment:
                     checking_list.remove(agent_id)
                     checking_list.remove(target_agent_id)
 
+
         # third round check, agent collision conflict
         flag = False
         while not flag:
             
             flag = True
-            for agent_id in checking_list:
+            for agent_id in checking_list.copy():
 
                 collide_agent_id = np.where(np.all(next_pos==next_pos[agent_id], axis=1))[0].tolist()
-                if collide_agent_id:
+                if len(collide_agent_id) > 1:
                     # collide agent
                     
                     # if all agents in collide agent are in checking list
                     all_in_checking = True
-                    for id in collide_agent_id:
+                    for id in collide_agent_id.copy():
                         if id not in checking_list:
                             all_in_checking = False
                             collide_agent_id.remove(id)
@@ -337,7 +338,6 @@ class Environment:
 
                     flag = False
                     break
-
 
         # self.history.append(np.copy(next_pos))
         self.agents_pos = np.copy(next_pos)
