@@ -241,7 +241,7 @@ class Environment:
         rewards = []
 
         # remove unmoving agent id
-        for agent_id in checking_list.copy():
+        for agent_id in checking_list:
 
             if actions[agent_id] == 0:
                 # unmoving
@@ -263,9 +263,9 @@ class Environment:
             next_pos[agent_id] += action_list[actions[agent_id]]
 
         # first round check, these two conflicts have the heightest priority
-        for agent_id in checking_list.copy():
-            # here assume map is square size
-            if np.any(next_pos[agent_id]<0) or np.any(next_pos[agent_id]>=self.map_length):
+        for agent_id in checking_list:
+
+            if np.any(next_pos[agent_id]<0) or np.any(next_pos[agent_id]>=self.map_size[0]):
                 # agent out of map range
                 rewards[agent_id] = self.reward_fn['collision']
                 next_pos[agent_id] = self.agents_pos[agent_id]
@@ -279,10 +279,12 @@ class Environment:
 
         # second round check, agent swapping conflict
         for agent_id in checking_list:
-            if np.any(np.all(next_pos[agent_id]==self.agents_pos, axis=1)):
 
-                target_agent_id = np.where(np.all(next_pos[agent_id]==self.agents_pos, axis=1))[0].item()
-                # assert len(target_agent_id) == 1, 'target > 1'
+            target_agent_id = np.where(np.all(next_pos[agent_id]==self.agents_pos, axis=1))[0]
+
+            if target_agent_id:
+
+                target_agent_id = target_agent_id.item()
 
                 if np.array_equal(next_pos[target_agent_id], self.agents_pos[agent_id]):
                     assert target_agent_id in checking_list, 'not in check'
@@ -296,28 +298,26 @@ class Environment:
                     checking_list.remove(agent_id)
                     checking_list.remove(target_agent_id)
 
-        # agent collision conflict
+        # third round check, agent collision conflict
         flag = False
         while not flag:
             
             flag = True
-            for agent_id in checking_list.copy():
-                
-                if np.sum(np.all(next_pos==next_pos[agent_id], axis=1)) > 1:
-                    # collide agent
+            for agent_id in checking_list:
 
-                    collide_agent_id = np.where(np.all(next_pos==next_pos[agent_id], axis=1))[0].tolist()
-                    all_in = True
+                collide_agent_id = np.where(np.all(next_pos==next_pos[agent_id], axis=1))[0].tolist()
+                if collide_agent_id:
+                    # collide agent
+                    
+                    # if all agents in collide agent are in checking list
+                    all_in_checking = True
                     for id in collide_agent_id:
                         if id not in checking_list:
-                            all_in =False
-                            break
+                            all_in_checking = False
+                            collide_agent_id.remove(id)
 
-                    if not all_in:
-                        # agent collide unmoving agent
-                        collide_agent_id = [ id for id in collide_agent_id if id in checking_list]
 
-                    else:
+                    if all_in_checking:
 
                         collide_agent_pos = next_pos[collide_agent_id].tolist()
                         for pos, id in zip(collide_agent_pos, collide_agent_id):
@@ -375,10 +375,13 @@ class Environment:
 
         '''
         obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
-        pos = np.zeros((self.num_agents, 4), dtype=np.float32)
+        pos = np.zeros((self.num_agents, 4), dtype=np.uint8)
+
+        pos[:, 0:2] = self.agents_pos
+        pos[:, 2:4] = self.goals_pos
 
         # 0 represents obstacle to match 0 padding in CNN 
-        obstacle_map = np.pad(self.map, self.obs_radius, 'constant', constant_values=1)==0
+        obstacle_map = np.pad(self.map==0, self.obs_radius, 'constant', constant_values=0)
 
         agent_map = np.zeros((self.map_size), dtype=np.bool)
         agent_map[self.agents_pos[:,0], self.agents_pos[:,1]] = 1
@@ -387,14 +390,13 @@ class Environment:
         # goal_map = np.zeros(self.map_size, dtype=np.float32)
         # goal_map[self.goals_pos[:,0], self.goals_pos[:,1]] = 1
 
-        for i in range(self.num_agents):
-            x, y = self.agents_pos[i]
-            pos[i][0:2] = self.agents_pos[i].astype(np.float32) / 20
-            pos[i][2:4] = self.goals_pos[i].astype(np.float32) / 20
+        for i, agent_pos in enumerate(self.agents_pos):
+            x, y = agent_pos
 
             obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
             obs[i,1] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
+
             obs[i,1,self.obs_radius,self.obs_radius] = 0
 
         return obs, pos
