@@ -44,6 +44,8 @@ def create_test(num_agents:Union[int,list,tuple]):
 
         env.reset()
 
+    tests['opt_mean_steps'] = sum(tests['opt_steps']) / len(tests['opt_steps'])
+
     with open(name, 'wb') as f:
         pickle.dump(tests, f)
 
@@ -73,6 +75,7 @@ def test_model(num_agents, test_case='test4.pkl'):
 
         fail = 0
         optimal = 0
+        steps = []
 
         for i in range(test_num):
             env.load(tests['maps'][i], tests['agents'][i], tests['goals'][i])
@@ -105,7 +108,7 @@ def test_model(num_agents, test_case='test4.pkl'):
                 _, _, done, _ = env.step(action)
                 # print(done)
 
-
+            steps.append(env.steps)
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
                 fail += 1
@@ -120,10 +123,13 @@ def test_model(num_agents, test_case='test4.pkl'):
         
         f_rate = (test_num-fail)/test_num
         o_rate = optimal/test_num
+        mean_steps = sum(steps)/test_num
 
         print('--------------{}---------------'.format(model_name))
         print('finish: %.4f' %f_rate)
         print('optimal: %.4f' %o_rate)
+        print('mean steps: %.4f' %mean_steps)
+        print('optimal mean steps: %.4f' %tests['opt_mean_steps'])
 
         model_name += config.save_interval
 
