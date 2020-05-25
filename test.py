@@ -128,8 +128,8 @@ def test_model(num_agents, test_case='test4.pkl'):
         print('--------------{}---------------'.format(model_name))
         print('finish: %.4f' %f_rate)
         print('optimal: %.4f' %o_rate)
-        print('mean steps: %.4f' %mean_steps)
-        print('optimal mean steps: %.4f' %tests['opt_mean_steps'])
+        print('mean steps: %.2f' %mean_steps)
+        print('optimal mean steps: %.2f' %tests['opt_mean_steps'])
 
         model_name += config.save_interval
 
