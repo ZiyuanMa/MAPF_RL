@@ -5,6 +5,7 @@ map_length = 20
 num_agents = 4
 obs_radius = 4
 reward_fn = dict(move=-0.075,
+                move_to_goal=0.015,
                 stay_on_goal=0,
                 stay_off_goal=-0.125,
                 collision=-0.5,
