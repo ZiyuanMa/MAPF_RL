@@ -267,8 +267,8 @@ class Learner:
                 self.tar_model.load_state_dict(self.model.state_dict())
                 torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
             
-            if i == 10000:
-                config.imitation_ratio = 0
+            # if i == 10000:
+            #     config.imitation_ratio = 0
 
         self.done = True
     def huber_loss(self, abs_td_error):
@@ -298,7 +298,6 @@ class Actor:
     def run(self):
         """ Generate training batch sample """
         done = False
-
 
         # if use imitation learning
         imitation = True if random.random() < config.imitation_ratio else False
