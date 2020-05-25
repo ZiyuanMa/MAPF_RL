@@ -239,8 +239,9 @@ class Environment:
         checking_list = [i for i in range(self.num_agents)]
 
         rewards = []
+        next_pos = np.copy(self.agents_pos)
 
-        # remove unmoving agent id
+        # assign reward and remove unmoving agent id
         for agent_id in checking_list.copy():
             if actions[agent_id] == 0:
                 # unmoving
@@ -253,14 +254,10 @@ class Environment:
                 checking_list.remove(agent_id)
             else:
                 # move
+                next_pos[agent_id] += action_list[actions[agent_id]]
                 rewards.append(self.reward_fn['move'])
 
         # assert len(rewards)==len(actions), '{}, {}'.format(len(rewards), len(actions))
-        next_pos = np.copy(self.agents_pos)
-
-        for agent_id in checking_list:
-
-            next_pos[agent_id] += action_list[actions[agent_id]]
 
         # first round check, these two conflicts have the heightest priority
         for agent_id in checking_list.copy():
