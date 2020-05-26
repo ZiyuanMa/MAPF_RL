@@ -440,21 +440,3 @@ def find_path(env) -> List[int]:
             actions.append(step_action)
 
     return actions
-
-class Search(mp.Process):
-    def __init__(self, environment, queue):
-        '''the process that only do network caculation, one for each agent'''
-        super().__init__()
-        self.env = environment
-        self.queue = queue
-
-    def run(self):
-        while True:
-
-            self.env.reset()
-            path = find_path(self.env)
-            while path is None:
-                self.env.reset()
-                path = find_path(self.env)
-
-            self.queue.put((np.copy(self.env.map), np.copy(self.env.agents_pos), np.copy(self.env.goals_pos), path))
