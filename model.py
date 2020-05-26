@@ -102,6 +102,7 @@ class Network(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0)
 
+    @torch.no_grad
     def step(self, obs, pos):
         
         obs_latent = self.obs_encoder(obs)
@@ -129,7 +130,9 @@ class Network(nn.Module):
 
         self.hidden = self.hidden.unsqueeze(0)
 
-        return q_val
+        actions = torch.argmax(q_val, 1).tolist()
+
+        return actions, q_val
 
     def reset(self):
         self.hidden = None

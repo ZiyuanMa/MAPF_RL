@@ -291,7 +291,8 @@ class Actor:
         self.env = Environment()
         self.epsilon = epsilon
         self.learner = learner
-        self.buffer = buffer
+        self.global_buffer = buffer
+        self.local_buffer = None
         self.distributional = config.distributional
         # self.imitation_ratio = config.imitation_ratio
         self.max_steps = config.max_steps
@@ -300,50 +301,30 @@ class Actor:
         """ Generate training batch sample """
         done = False
 
-        # if use imitation learning
-        imitation = True if random.random() < config.imitation_ratio else False
-        if imitation:
-            imitation_actions = find_path(self.env)
-            while imitation_actions is None:
-                self.env.reset()
-                imitation_actions = find_path(self.env)
-            obs_pos = self.env.observe()
-            buffer = LocalBuffer(obs_pos, True)
-        else:
-            obs_pos = self.env.reset()
-            buffer = LocalBuffer(obs_pos, False)
+        obs_pos, local_buffer, imitation, imitation_actions = self.reset()
 
         while True:
 
             if imitation:
 
                 actions = imitation_actions.pop(0)
-                with torch.no_grad():
-                    q_val = self.model.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
-                    if self.distributional:
-                        q_val = q_val.mean(dim=2)
+
+                _, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
             else:
                 # sample action
-                with torch.no_grad():
 
-                    q_val = self.model.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
+                actions, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
-                    if self.distributional:
-                        q_val = q_val.mean(dim=2)
-
-                    actions = q_val.argmax(1).tolist()
-
-                    if random.random() < self.epsilon:
-                        actions[0] = np.random.randint(0, 5)
+                if random.random() < self.epsilon:
+                    # Note: only one agent can do random action in order to make the whole environment more stable
+                    actions[0] = np.random.randint(0, 5)
 
             # take action in env
             next_obs_pos, r, done, _ = self.env.step(actions)
-        
 
             # return data and update observation
-
-            buffer.add(q_val.numpy(), actions, r, next_obs_pos)
+            local_buffer.add(q_val.numpy(), actions, r, next_obs_pos)
 
 
             if done == False and self.env.steps < self.max_steps:
@@ -352,36 +333,57 @@ class Actor:
             else:
                 # finish and send buffer
                 if done:
-                    buffer.finish()
+                    local_buffer.finish()
                 else:
-                    with torch.no_grad():
-                        q_val = self.model.step(torch.FloatTensor(next_obs_pos[0]), torch.FloatTensor(next_obs_pos[1]))
-                        if self.distributional:
-                            q_val = q_val.mean(dim=2)
-                    buffer.finish(q_val)
 
-                self.buffer.add.remote(buffer)
+                    _, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
+
+                    local_buffer.finish(q_val)
+
+                self.global_buffer.add.remote(local_buffer)
 
                 done = False
-                self.model.reset()
-                obs_pos = self.env.reset()
-
                 self.update_weights()
 
-                imitation = True if random.random() < config.imitation_ratio else False
-                if imitation:
-                    imitation_actions = find_path(self.env)
-                    while imitation_actions is None:
-                        obs_pos = self.env.reset()
-                        imitation_actions = find_path(self.env)
 
-                    buffer = LocalBuffer(obs_pos, True)
-                else:
-                    buffer = LocalBuffer(obs_pos, False)
+                # self.model.reset()
+                # obs_pos = self.env.reset()
+                # imitation = True if random.random() < config.imitation_ratio else False
+                # if imitation:
+                #     imitation_actions = find_path(self.env)
+                #     while imitation_actions is None:
+                #         obs_pos = self.env.reset()
+                #         imitation_actions = find_path(self.env)
+
+                #     local_buffer = LocalBuffer(obs_pos, True)
+                # else:
+                #     local_buffer = LocalBuffer(obs_pos, False)
+
+                obs_pos, local_buffer, imitation, imitation_actions = self.reset()
 
     def update_weights(self):
         '''load weights from learner'''
         weights_id = ray.get(self.learner.get_weights.remote())
         weights = ray.get(weights_id)
         self.model.load_state_dict(weights)
+
     
+    def reset(self):
+        self.model.reset()
+        obs_pos = self.env.reset()
+        # if use imitation learning
+        imitation = True if random.random() < config.imitation_ratio else False
+        if imitation:
+            imitation_actions = find_path(self.env)
+            while imitation_actions is None:
+                obs_pos = self.env.reset()
+                imitation_actions = find_path(self.env)
+
+            local_buffer = LocalBuffer(obs_pos, True)
+
+            return obs_pos, local_buffer, imitation, imitation_actions
+        else:
+            
+            local_buffer = LocalBuffer(obs_pos, False)
+
+            return obs_pos, local_buffer, imitation, None

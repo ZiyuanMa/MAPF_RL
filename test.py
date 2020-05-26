@@ -90,22 +90,15 @@ def test_model(num_agents, test_case='test4.pkl'):
                 obs_pos = env.observe()
                 # obs = np.expand_dims(obs, axis=0)
 
-                with torch.no_grad():
-
-                    q_vals = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
-                    if network.distributional:
-                        q_vals = (q_vals.exp() * vrange).sum(2)
+                actions, q_vals = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
                 if i == case and show and env.steps < show_steps:
                     print(q_vals)
 
-                action = torch.argmax(q_vals, 1).tolist()
-
                 if i == case and show and env.steps < show_steps:
-                    print(action)
+                    print(actions)
 
-
-                _, _, done, _ = env.step(action)
+                _, _, done, _ = env.step(actions)
                 # print(done)
 
             steps.append(env.steps)
