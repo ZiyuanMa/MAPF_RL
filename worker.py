@@ -188,6 +188,8 @@ class Learner:
         self.counter = 0
         self.done = False
         self.loss = 0
+        taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
+        self.taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200)
 
         self.store_weights()
 
@@ -233,7 +235,7 @@ class Learner:
                 b_target_dist = b_target_dist.unsqueeze(1)
 
                 td_errors = b_target_dist-b_dist
-                loss = self.quantile_huber_loss(td_errors)
+                loss = self.quantile_huber_loss(td_errors, weights=weights)
 
             else:
                 with torch.no_grad():
@@ -288,13 +290,11 @@ class Learner:
         return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
 
     def quantile_huber_loss(self, td_errors, weights=None, kappa=1.0):
-        taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
-        taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200)
 
         element_wise_huber_loss = self.huber_loss(td_errors, kappa)
         assert element_wise_huber_loss.shape == (config.batch_size, 200, 200)
 
-        element_wise_quantile_huber_loss = torch.abs(taus[..., None] - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
+        element_wise_quantile_huber_loss = torch.abs(self.taus[..., None] - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
         assert element_wise_quantile_huber_loss.shape == (config.batch_size, 200, 200)
 
         batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
