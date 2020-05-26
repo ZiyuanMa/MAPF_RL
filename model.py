@@ -102,7 +102,7 @@ class Network(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0)
 
-    @torch.no_grad
+    @torch.no_grad()
     def step(self, obs, pos):
         
         obs_latent = self.obs_encoder(obs)
