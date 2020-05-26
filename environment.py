@@ -39,24 +39,24 @@ def map_partition(map):
         close_list = list()
 
         while open_list:
-            pos = open_list.pop(0)
+            x, y = open_list.pop(0)
 
-            up = (pos[0]-1, pos[1])
+            up = x-1, y
             if up[0] >= 0 and map[up]==0 and up in empty_pos:
                 empty_pos.remove(up)
                 open_list.append(up)
             
-            down = (pos[0]+1, pos[1])
+            down = x+1, y
             if down[0] < map.shape[0] and map[down]==0 and down in empty_pos:
                 empty_pos.remove(down)
                 open_list.append(down)
             
-            left = (pos[0], pos[1]-1)
+            left = x, y-1
             if left[1] >= 0 and map[left]==0 and left in empty_pos:
                 empty_pos.remove(left)
                 open_list.append(left)
             
-            right = (pos[0], pos[1]+1)
+            right = x, y+1
             if right[1] < map.shape[1] and map[right]==0 and right in empty_pos:
                 empty_pos.remove(right)
                 open_list.append(right)
