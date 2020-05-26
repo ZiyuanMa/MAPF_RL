@@ -61,7 +61,7 @@ def map_partition(map):
                 empty_pos.remove(right)
                 open_list.append(right)
 
-            close_list.append(pos)
+            close_list.append((x, y))
 
 
         partition_list.append(close_list)
