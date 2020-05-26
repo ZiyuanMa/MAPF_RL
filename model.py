@@ -173,11 +173,7 @@ class Network(nn.Module):
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
-            adv_val, _ = adv_val.sort()
-
             state_val = state_val.unsqueeze(1)
-            state_val, _ = state_val.sort()
-
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
         else:
