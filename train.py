@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     buffer = GlobalBuffer.remote(config.global_buffer_size)
     learner = Learner.remote(buffer)
-    num_actors = 8
+    num_actors = 10
     actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), learner, buffer) for i in range(num_actors)]
 
     [ actor.run.remote() for actor in actors ]

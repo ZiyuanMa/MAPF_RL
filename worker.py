@@ -183,7 +183,7 @@ class Learner:
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[10000,70000], gamma=0.5)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[10000, 70000, 80000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.done = False
@@ -207,7 +207,7 @@ class Learner:
 
     def train(self):
 
-        for i in range(1, 80001):
+        for i in range(1, 90001):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
