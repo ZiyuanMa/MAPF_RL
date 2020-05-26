@@ -165,7 +165,7 @@ class GlobalBuffer:
             self.priority_tree.batch_update(global_idxes, new_p)
 
     def stats(self, interval:int):
-        print('buffer update: {}'.format(self.counter/interval))
+        print('buffer update speed: {}/s'.format(self.counter/interval))
         print('buffer size: {}'.format(self.size))
         self.counter = 0
 
@@ -186,6 +186,7 @@ class Learner:
         self.scheduler = MultiStepLR(self.optimizer, milestones=[10000, 60000, 70000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
+        self.last_counter = 0
         self.done = False
         self.loss = 0
         taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
@@ -307,9 +308,10 @@ class Learner:
 
         return quantile_huber_loss
     def stats(self, interval:int):
-        print('updates: {}'.format(self.counter))
+        print('number of updates: {}'.format(self.counter))
+        print('update speed: {}/s'.format((self.counter-self.last_counter)/interval))
         print('loss: {}'.format(self.loss))
-        # self.counter = 0
+        self.last_counter = self.counter
         return self.done
 
 
@@ -323,9 +325,6 @@ class Actor:
         self.epsilon = epsilon
         self.learner = learner
         self.global_buffer = buffer
-        self.local_buffer = None
-        self.distributional = config.distributional
-        # self.imitation_ratio = config.imitation_ratio
         self.max_steps = config.max_steps
 
     def run(self):
