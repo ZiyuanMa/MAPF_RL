@@ -220,8 +220,20 @@ class Learner:
                 with torch.no_grad():
                     b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps)
                     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
-                    b_next_dist = b_next_dist[torch.arange(config.batch_size*config.num_agents), b_next_action, :]
+                    b_next_dist = b_next_dist[torch.arange(config.batch_size), b_next_action, :]
 
+                b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps)
+                b_dist = b_dist[torch.arange(config.batch_size), b_action, :]
+
+                b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
+                
+                # batch_size * N * 1
+                b_dist = b_dist.unsqueeze(2)
+                # batch_size * 1 * N
+                b_target_dist = b_target_dist.unsqueeze(1)
+
+                td_errors = b_target_dist-b_dist
+                loss = self.quantile_huber_loss(td_errors)
 
             else:
                 with torch.no_grad():
@@ -271,10 +283,29 @@ class Learner:
             #     config.imitation_ratio = 0
 
         self.done = True
-    def huber_loss(self, abs_td_error):
-        flag = (abs_td_error < 1).float()
+    def huber_loss(self, abs_td_error, kappa=1.0):
+        flag = (abs_td_error < kappa).float()
         return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
 
+    def quantile_huber_loss(self, td_errors, weights=None, kappa=1.0):
+        taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
+        taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200)
+
+        element_wise_huber_loss = self.huber_loss(td_errors, kappa)
+        assert element_wise_huber_loss.shape == (config.batch_size, 200, 200)
+
+        element_wise_quantile_huber_loss = torch.abs(taus[..., None] - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
+        assert element_wise_quantile_huber_loss.shape == (config.batch_size, 200, 200)
+
+        batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
+        assert batch_quantile_huber_loss.shape == (config.batch_size, 1)
+
+        if weights is not None:
+            quantile_huber_loss = (batch_quantile_huber_loss * weights).mean()
+        else:
+            quantile_huber_loss = batch_quantile_huber_loss.mean()
+
+        return quantile_huber_loss
     def stats(self, interval:int):
         print('updates: {}'.format(self.counter))
         print('loss: {}'.format(self.loss))
