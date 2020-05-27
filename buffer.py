@@ -10,6 +10,26 @@ import config
 
 discounts = np.array([ 0.99**i for i in range(config.max_steps)])
 
+def quantile_huber_loss(curr_dist, target_dist, kappa=1.0):
+    curr_dist = np.expand_dims(curr_dist, 1)
+    target_dist = np.expand_dims(target_dist, 0)
+
+    td_errors = curr_dist - target_dist
+
+    abs_td_errors = np.abs(td_errors)
+
+    flag = (abs_td_errors < kappa).astype(np.float32)
+    element_wise_huber_loss = flag * (abs_td_errors**2) * 0.5 + (1 - flag) * kappa * (abs_td_errors - 0.5*kappa)
+
+    taus = np.expand_dims(np.arange(1/400, 1, 1/200), 1)
+
+    element_wise_quantile_huber_loss = np.abs(taus - (td_errors < 0).astype(np.float32)) * element_wise_huber_loss / kappa
+
+    quantile_huber_loss = np.mean(np.sum(element_wise_quantile_huber_loss, axis=0), axis=0)
+
+    return quantile_huber_loss
+
+
 class SumTree:
     def __init__(self, capacity, priorities=None):
 
@@ -105,9 +125,14 @@ class LocalBuffer:
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
         self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)
-        self.act_buf = np.zeros((size, self.num_agents), dtype=np.long)
+        self.act_buf = np.zeros((size, self.num_agents), dtype=np.uint8)
         self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
-        self.q_buf = np.zeros((size+1, self.num_agents, 5), dtype=np.float32)
+
+        if config.distributional:
+            # quantile values
+            self.q_buf = np.zeros((size+1, self.num_agents, 5, 200), dtype=np.float32)
+        else:
+            self.q_buf = np.zeros((size+1, self.num_agents, 5), dtype=np.float32)
 
         self.capacity = size
         self.size = 0
@@ -155,20 +180,46 @@ class LocalBuffer:
                 forward = min(4, self.size-i)
                 # print(self.rew_buf[i:i+forward, 0])
                 # print(self.rew_buf[i:i+forward, 0]*discounts[:forward])
-                reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
-                q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
+                if config.distributional:
+                    next_dist = self.q_buf[i+forward, 0]
+                    next_q = np.mean(next_dist, axis=1)
+                    next_action = np.argmax(next_q)
+                    next_dist = next_dist[next_action]
 
-                priorities[i] = np.abs(reward-q_val)
+                    target_dist = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0) + (0.99**forward)*next_dist
+
+                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
+
+                    priorities[i] = quantile_huber_loss(curr_dist, target_dist)
+
+                else:
+                    reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
+                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
+                    priorities[i] = np.abs(reward-q_val)
 
         else:
             for i in range(self.size):
                 # forward = 1
-                reward = self.rew_buf[i, 0]+0.99*np.max(self.q_buf[i+1, 0], axis=0)
-                q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
-                priorities[i] = np.abs(reward-q_val)
+                if config.distributional:
+                    next_dist = self.q_buf[i+1, 0]
+                    next_q = np.mean(next_dist, axis=1)
+                    next_action = np.argmax(next_q)
+                    next_dist = next_dist[next_action]
+
+                    target_dist = self.rew_buf[i, 0]+0.99*next_dist
+
+                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
+
+                    priorities[i] = quantile_huber_loss(curr_dist, target_dist)
+                else:
+                    reward = self.rew_buf[i, 0]+0.99*np.max(self.q_buf[i+1, 0], axis=0)
+                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
+                    priorities[i] = np.abs(reward-q_val)
 
         self.priority_tree = SumTree(self.capacity, priorities)
         self.priority = self.priority_tree.sum()
+
+        del self.q_buf
         
     def sample(self, prefixsum):
 

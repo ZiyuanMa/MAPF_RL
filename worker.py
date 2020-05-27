@@ -231,10 +231,6 @@ class Learner:
 
                 b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
 
-                b_q = b_dist.detach().mean(1, keepdim=True)
-                b_q_ = b_target_dist.mean(1, keepdim=True)
-                priorities = (b_q - b_q_).abs().cpu().clamp(1e-6).numpy()
-
                 
                 # batch_size * N * 1
                 b_dist = b_dist.unsqueeze(2)
@@ -242,7 +238,7 @@ class Learner:
                 b_target_dist = b_target_dist.unsqueeze(1)
 
                 td_errors = b_target_dist-b_dist
-                loss = self.quantile_huber_loss(td_errors, weights=weights)
+                priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
 
             else:
                 with torch.no_grad():
@@ -308,12 +304,14 @@ class Learner:
         batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
         assert batch_quantile_huber_loss.shape == (config.batch_size, 1)
 
+        priorities = batch_quantile_huber_loss.detach().cpu().clamp(1e-6).numpy()
+
         if weights is not None:
             quantile_huber_loss = (batch_quantile_huber_loss * weights).mean()
         else:
             quantile_huber_loss = batch_quantile_huber_loss.mean()
 
-        return quantile_huber_loss
+        return priorities, quantile_huber_loss
     def stats(self, interval:int):
         print('number of updates: {}'.format(self.counter))
         print('update speed: {}/s'.format((self.counter-self.last_counter)/interval))

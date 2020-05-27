@@ -122,21 +122,18 @@ class Network(nn.Module):
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
-            adv_val, _ = adv_val.sort()
-
             state_val = state_val.unsqueeze(1)
-            state_val, _ = state_val.sort()
-
+            # batch_size x 5 x 200
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
-            q_val = q_val.mean(2)
+            actions = q_val.mean(2).argmax(1).tolist()
+
 
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+            actions = torch.argmax(q_val, 1).tolist()
 
         self.hidden = self.hidden.unsqueeze(0)
-
-        actions = torch.argmax(q_val, 1).tolist()
 
         return actions, q_val
 
