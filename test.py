@@ -52,12 +52,15 @@ def create_test(num_agents:Union[int,list,tuple]):
 
 def test_model(num_agents, test_case='test4.pkl'):
 
-
     network = Network()
     network.eval()
     network.to(device)
-    
-    vrange = torch.linspace(-5, 5, 51).to(device)
+
+    write_log = False
+    note = None
+    if write_log and note is not None:
+        with open("test_log.txt","a") as f:
+            f.write('\n\n---{}---\n\n'.format(note))
 
 
     with open(test_case, 'rb') as f:
@@ -123,6 +126,14 @@ def test_model(num_agents, test_case='test4.pkl'):
         print('optimal: %.4f' %o_rate)
         print('mean steps: %.2f' %mean_steps)
         print('optimal mean steps: %.2f' %tests['opt_mean_steps'])
+
+        if write_log:
+            with open("test_log.txt","a") as f:
+                f.write('--------------{}---------------\n'.format(model_name))
+                f.write('finish: %.4f\n' %f_rate)
+                f.write('optimal: %.4f\n' %o_rate)
+                f.write('mean steps: %.2f\n' %mean_steps)
+                f.write('optimal mean steps: %.2f\n' %tests['opt_mean_steps'])
 
         model_name += config.save_interval
 
