@@ -190,7 +190,8 @@ class Learner:
         self.done = False
         self.loss = 0
         taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
-        self.taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200)
+        taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200, 1)
+        self.taus = taus.expand(config.batch_size, 200, 200)
 
         self.store_weights()
 
@@ -210,7 +211,7 @@ class Learner:
 
     def train(self):
         batch_idx = torch.arange(config.batch_size)
-        for i in range(1, 80001):
+        for i in range(1, 100001):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
@@ -229,6 +230,11 @@ class Learner:
                 b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
 
                 b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
+
+                b_q = b_dist.detach().mean(1, keepdim=True)
+                b_q_ = b_target_dist.mean(1, keepdim=True)
+                priorities = (b_q - b_q_).abs().cpu().clamp(1e-6).numpy()
+
                 
                 # batch_size * N * 1
                 b_dist = b_dist.unsqueeze(2)
@@ -250,11 +256,11 @@ class Learner:
 
                 b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps).gather(1, b_action)
 
-                abs_td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_)).abs()
+                td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
-                priorities = abs_td_error.detach().cpu().clamp(1e-6).numpy()
+                priorities = td_error.detach().abs().cpu().clamp(1e-6).numpy()
 
-                loss = (weights * self.huber_loss(abs_td_error)).mean()
+                loss = (weights * self.huber_loss(td_error)).mean()
 
             self.optimizer.zero_grad()
 
@@ -286,7 +292,8 @@ class Learner:
             #     config.imitation_ratio = 0
 
         self.done = True
-    def huber_loss(self, abs_td_error, kappa=1.0):
+    def huber_loss(self, td_error, kappa=1.0):
+        abs_td_error = td_error.abs()
         flag = (abs_td_error < kappa).float()
         return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
 
@@ -295,7 +302,7 @@ class Learner:
         element_wise_huber_loss = self.huber_loss(td_errors, kappa)
         assert element_wise_huber_loss.shape == (config.batch_size, 200, 200)
 
-        element_wise_quantile_huber_loss = torch.abs(self.taus[..., None] - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
+        element_wise_quantile_huber_loss = torch.abs(self.taus - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
         assert element_wise_quantile_huber_loss.shape == (config.batch_size, 200, 200)
 
         batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
@@ -343,7 +350,7 @@ class Actor:
 
             else:
                 # sample action
-
+                # Note: q_val is quantile values if it's distributional
                 actions, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
                 if random.random() < self.epsilon:

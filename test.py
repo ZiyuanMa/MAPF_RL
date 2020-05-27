@@ -57,7 +57,7 @@ def test_model(num_agents, test_case='test4.pkl'):
     network.to(device)
 
     write_log = False
-    note = None
+    note = 'basic'
     if write_log and note is not None:
         with open("test_log.txt","a") as f:
             f.write('\n\n---{}---\n\n'.format(note))
@@ -72,7 +72,7 @@ def test_model(num_agents, test_case='test4.pkl'):
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 65
+        case = 68
         show = False
         show_steps = 30
 

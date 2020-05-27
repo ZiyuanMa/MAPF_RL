@@ -37,7 +37,7 @@ global_buffer_size = 2048
 grad_norm_dqn=40
 
 # distributional dqn
-distributional = False
+distributional = True
 
 # prioritized replay
 prioritized_replay_alpha=0.6
