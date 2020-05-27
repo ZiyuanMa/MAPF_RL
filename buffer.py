@@ -31,6 +31,7 @@ def quantile_huber_loss(curr_dist, target_dist, kappa=1.0):
 
 
 class SumTree:
+    __slots__ = ('layer', 'tree', 'capacity', 'size')
     def __init__(self, capacity, priorities=None):
 
         layer = 1
@@ -114,11 +115,13 @@ class SumTree:
 
 
 class LocalBuffer:
+    __slots__ = ('alpha', 'num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'q_buf',
+                    'capacity', 'size', 'imitation', 'done', 'priority_tree', 'priority')
     def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps, alpha=config.prioritized_replay_alpha):
         """
         Prioritized Replay buffer for each actor
-
         """
+
         self.alpha = alpha
 
         self.num_agents = init_obs_pos[0].shape[0]
