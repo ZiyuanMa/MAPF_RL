@@ -209,7 +209,7 @@ class Learner:
         self.learning_thread.start()
 
     def train(self):
-
+        batch_idx = torch.arange(config.batch_size)
         for i in range(1, 80001):
 
             data_id = ray.get(self.buffer.get_data.remote())
@@ -223,10 +223,10 @@ class Learner:
                 with torch.no_grad():
                     b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps)
                     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
-                    b_next_dist = b_next_dist[torch.arange(config.batch_size), b_next_action, :]
+                    b_next_dist = b_next_dist[batch_idx, b_next_action, :]
 
                 b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps)
-                b_dist = b_dist[torch.arange(config.batch_size), b_action, :]
+                b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
 
                 b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
                 
