@@ -8,6 +8,7 @@ import os
 import matplotlib as mpl
 mpl.use('TkAgg')
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import random
 import argparse
 from typing import Union
@@ -57,23 +58,23 @@ def test_model(num_agents, test_case='test4.pkl'):
     network.to(device)
 
     write_log = False
-    note = 'basic'
-    if write_log and note is not None:
+    title = 'qr-dqn'
+    if write_log and title is not None:
         with open("test_log.txt","a") as f:
-            f.write('\n\n---{}---\n\n'.format(note))
+            f.write('\n\n---{}---\n\n'.format(title))
 
 
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = config.save_interval
+    model_name = config.save_interval * 40
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 68
-        show = False
+        case = 4
+        show = True
         show_steps = 30
 
         fail = 0
@@ -91,7 +92,6 @@ def test_model(num_agents, test_case='test4.pkl'):
                     env.render()
 
                 obs_pos = env.observe()
-                # obs = np.expand_dims(obs, axis=0)
 
                 actions, q_vals = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
@@ -115,7 +115,7 @@ def test_model(num_agents, test_case='test4.pkl'):
                 optimal += 1
 
             if i == case and show:
-                env.close()
+                env.close(True)
         
         f_rate = (test_num-fail)/test_num
         o_rate = optimal/test_num
@@ -137,18 +137,80 @@ def test_model(num_agents, test_case='test4.pkl'):
 
         model_name += config.save_interval
 
+def make_animation():
+    color_map = np.array([[255, 255, 255],   # white
+                    [190, 190, 190],   # gray
+                    [0, 191, 255],   # blue
+                    [255, 165, 0],   # orange
+                    [0, 250, 154]])  # green
+
+    test_name = 'test4.pkl'
+    with open(test_name, 'rb') as f:
+        tests = pickle.load(f)
+    test_case = 1
+    
+    model_name = config.save_interval * 40
+    steps = 30
+    network = Network()
+    network.eval()
+    network.to(device)
+    state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
+    network.load_state_dict(state_dict)
+
+    env = Environment()
+    env.load(tests['maps'][test_case], tests['agents'][test_case], tests['goals'][test_case])
+
+    fig = plt.figure()
+            
+    done = False
+    obs_pos = env.observe()
+
+    imgs = []
+    while not done and env.steps < steps:
+        imgs.append([])
+        map = np.copy(env.map)
+        for agent_id in range(env.num_agents):
+            if np.array_equal(env.agents_pos[agent_id], env.goals_pos[agent_id]):
+                map[tuple(env.agents_pos[agent_id])] = 4
+            else:
+                map[tuple(env.agents_pos[agent_id])] = 2
+                map[tuple(env.goals_pos[agent_id])] = 3
+        map = map.astype(np.uint8)
+
+        img = plt.imshow(color_map[map], animated=True)
+
+        imgs[-1].append(img)
+
+        for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
+            text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+            imgs[-1].append(text)
+            text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+            imgs[-1].append(text)
+
+
+        actions, _ = network.step(torch.from_numpy(obs_pos[0].astype(np.float32)).to(device), torch.from_numpy(obs_pos[1].astype(np.float32)).to(device))
+        obs_pos, _, done, _ = env.step(actions)
+        # print(done)
+
+    ani = animation.ArtistAnimation(fig, imgs, interval=500, blit=True,
+                                repeat_delay=1000)
+
+    ani.save('dynamic_images.mp4')
+
     
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='test MAPF model')
+    # parser = argparse.ArgumentParser(description='test MAPF model')
 
-    parser.add_argument('--mode', type=str, choices=['test', 'create'], default='test', help='create test set or run test set')
-    parser.add_argument('--number', type=int, default=4, help='number of agents in environment')
+    # parser.add_argument('--mode', type=str, choices=['test', 'create'], default='test', help='create test set or run test set')
+    # parser.add_argument('--number', type=int, default=4, help='number of agents in environment')
 
-    args = parser.parse_args()
+    # args = parser.parse_args()
 
-    if args.mode == 'test':
-        test_model(args.number)
-    elif args.mode == 'create':
-        create_test(args.number)
+    # if args.mode == 'test':
+    #     test_model(args.number)
+    # elif args.mode == 'create':
+    #     create_test(args.number)
+
+    make_animation()
     

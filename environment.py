@@ -1,6 +1,7 @@
 import numpy as np
 
 import matplotlib.pyplot as plt
+plt.ion()
 from matplotlib import colors
 import random
 from typing import List, Union
@@ -151,6 +152,10 @@ class Environment:
 
         self.steps = 0
 
+        # for save render images
+        # self.fig = plt.figure()
+        # self.imgs = []
+
         # self.history = [np.copy(self.agents_pos)]
 
     def reset(self):
@@ -205,6 +210,9 @@ class Environment:
 
         self.steps = 0
 
+        # self.fig = plt.figure()
+        # self.imgs = []
+
         # self.history = [np.copy(self.agents_pos)]
 
         return self.observe()
@@ -221,6 +229,9 @@ class Environment:
         # self.history = [np.copy(self.agents_pos)]
         
         self.steps = 0
+
+        # self.fig = plt.figure()
+        self.imgs = []
 
     def step(self, actions: List[int]):
         '''
@@ -423,6 +434,9 @@ class Environment:
         return obs, pos
     
     def render(self):
+        if not hasattr(self, 'fig'):
+            self.fig = plt.figure()
+
         map = np.copy(self.map)
         for agent_id in range(self.num_agents):
             if np.array_equal(self.agents_pos[agent_id], self.goals_pos[agent_id]):
@@ -432,11 +446,30 @@ class Environment:
                 map[tuple(self.goals_pos[agent_id])] = 3
 
         map = map.astype(np.uint8)
-        plt.imshow(color_map[map])
-        plt.xlabel('step: {}'.format(self.steps))
-        plt.ion()
+        # plt.xlabel('step: {}'.format(self.steps))
+
+        # add text in plot
+        self.imgs.append([])
+        if hasattr(self, 'texts'):
+            for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(self.agents_pos, self.goals_pos)):
+                self.texts[i].set_position((agent_y, agent_x))
+                self.texts[i].set_text(i)
+        else:
+            self.texts = []
+            for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(self.agents_pos, self.goals_pos)):
+                text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+                plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+                self.texts.append(text)
+
+
+        plt.imshow(color_map[map], animated=True)
+
+
         plt.show()
+        # plt.ion()
         plt.pause(0.5)
 
-    def close(self):
+    def close(self, save=False):
+
         plt.close()
+        del self.fig
