@@ -57,8 +57,8 @@ def test_model(num_agents, test_case='test4.pkl'):
     network.eval()
     network.to(device)
 
-    write_log = False
-    title = 'qr-dqn'
+    write_log = True
+    title = 'standard reward'
     if write_log and title is not None:
         with open("test_log.txt","a") as f:
             f.write('\n\n---{}---\n\n'.format(title))
@@ -67,14 +67,14 @@ def test_model(num_agents, test_case='test4.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = config.save_interval * 40
+    model_name = config.save_interval
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
         case = 4
-        show = True
+        show = False
         show_steps = 30
 
         fail = 0
@@ -211,6 +211,6 @@ if __name__ == '__main__':
     #     test_model(args.number)
     # elif args.mode == 'create':
     #     create_test(args.number)
-
-    make_animation()
+    test_model(4)
+    # make_animation()
     
