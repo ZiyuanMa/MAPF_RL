@@ -19,12 +19,13 @@ from search import find_path
 
 @ray.remote(num_cpus=1)
 class GlobalBuffer:
-    def __init__(self, capacity, beta=config.prioritized_replay_beta):
+    def __init__(self, capacity, alpha=config.prioritized_replay_alpha, beta=config.prioritized_replay_beta):
         self.capacity = capacity
         self.size = 0
         self.ptr = 0
         self.buffer = [ None for _ in range(capacity) ]
         self.priority_tree = SumTree(capacity)
+        self.alpha = alpha
         self.beta = beta
         self.counter = 0
         self.data = []
@@ -57,20 +58,22 @@ class GlobalBuffer:
             return self.data.pop(0)
 
 
-    def add(self, buffer):
+    def add(self, buffer:LocalBuffer):
 
         with self.lock:
+            idx_start = self.ptr*config.local_buffer_size
+            idxes = np.arange(idx_start, idx_start+buffer.size)
             # update buffer size
             if self.buffer[self.ptr] is not None:
                 self.size -= len(self.buffer[self.ptr])
             self.size += len(buffer)
             self.counter += len(buffer)
 
-            buffer.priority_tree.tree.flags.writeable = True
+            self.priority_tree.batch_update(idxes, buffer.td_errors**self.alpha)
+
+            delattr(buffer, 'priorities')
 
             self.buffer[self.ptr] = buffer
-
-            self.priority_tree.update(self.ptr, buffer.priority)
 
             self.ptr = (self.ptr+1) % self.capacity
 
@@ -78,19 +81,19 @@ class GlobalBuffer:
         if len(self) < config.learning_starts:
             raise Exception('buffer size is not large enough')
 
+        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
+        idxes, priorities = [], []
+
         with self.lock:
 
-            total_p = self.priority_tree.sum()
+            idxes, priorities = self.priority_tree.batch_sample(batch_size)
+            global_idxes = idxes // config.local_buffer_size
+            local_idxes = idxes % config.local_buffer_size
 
-            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
-            idxes, priorities = [], []
+            for global_idx, local_idx in zip(global_idxes, local_idxes):
 
-            every_range_len = total_p / batch_size
-            for i in range(batch_size):
-                global_prefixsum = random.random() * every_range_len + i * every_range_len
-                global_idx, local_prefixsum = self.priority_tree.find_prefixsum_idx(global_prefixsum)
-                ret = self.buffer[global_idx].sample(local_prefixsum)
-                obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps, local_idx, priority = ret   
+                ret = self.buffer[global_idx][local_idx]
+                obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps = ret   
                 
                 b_obs.append(obs)
                 b_pos.append(pos)
@@ -104,11 +107,7 @@ class GlobalBuffer:
                 b_bt_steps.append(bt_steps)
                 b_next_bt_steps.append(next_bt_steps)
 
-                idxes.append(global_idx*config.max_steps+local_idx)
-                priorities.append(priority)
-
             # importance sampling weights
-            priorities = np.asarray(priorities, dtype=np.float32)
             min_p = np.min(priorities)
             weights = np.power(priorities/min_p, -self.beta)
 
@@ -148,21 +147,7 @@ class GlobalBuffer:
                 idxes = idxes[mask]
                 priorities = priorities[mask]
 
-            global_idxes = idxes // config.max_steps
-            local_idxes = idxes % config.max_steps
-
-            # update priority tree in each local buffer
-            for global_idx, local_idx, priority in zip(global_idxes, local_idxes, priorities):
-                assert priority > 0
-                self.buffer[global_idx].update_priority(local_idx, priority)
-
-            # update priority tree in global buffer
-            global_idxes = np.unique(global_idxes)
-            new_p = []
-            for global_idx in global_idxes:
-                new_p.append(self.buffer[global_idx].priority)
-            new_p = np.asarray(new_p)
-            self.priority_tree.batch_update(global_idxes, new_p)
+            self.priority_tree.batch_update(idxes, priorities)
 
     def stats(self, interval:int):
         print('buffer update speed: {}/s'.format(self.counter/interval))
@@ -254,7 +239,7 @@ class Learner:
 
                 td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
-                priorities = td_error.detach().abs().cpu().clamp(1e-6).numpy()
+                priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
 
                 loss = (weights * self.huber_loss(td_error)).mean()
 
@@ -272,7 +257,7 @@ class Learner:
 
             self.scheduler.step()
 
-            # store new weight in shared memory
+            # store new weights in shared memory
             self.store_weights()
 
             self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
@@ -422,3 +407,4 @@ class Actor:
             local_buffer = LocalBuffer(obs_pos, False)
 
             return obs_pos, local_buffer, imitation, None
+

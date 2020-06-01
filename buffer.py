@@ -1,10 +1,11 @@
-import operator
 import random
 from typing import List
 import numpy as np
+from numba.experimental import jitclass
+from numba import int32, float32
 import torch
 import math
-import threading
+from dataclasses import dataclass
 
 import config
 
@@ -31,36 +32,20 @@ def quantile_huber_loss(curr_dist, target_dist, kappa=1.0):
 
 
 class SumTree:
-    __slots__ = ('layer', 'tree', 'capacity', 'size')
-    def __init__(self, capacity, priorities=None):
+
+    def __init__(self, capacity):
 
         layer = 1
         while 2**(layer-1) < capacity:
             layer += 1
         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
         self.layer = layer
-        self.tree = np.zeros(2**layer-1)
+        self.tree = np.zeros(2**layer-1, dtype=np.float32)
         self.capacity = capacity
-        if priorities is not None:
-            self.size = len(priorities)
-        else:
-            self.size = 0
-
-        if priorities is not None:
-            idx = np.array([ self.capacity-1+i for i in range(len(priorities)) ], dtype=np.int)
-            self.tree[idx] = priorities
-
-            for _ in range(layer-1):
-                idx = (idx-1) // 2
-                idx = np.unique(idx)
-                self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
-            
-            # check
-            assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
-
+        self.size = 0
 
     def sum(self):
-        assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
+        assert round(np.sum(self.tree[-self.capacity:])) == round(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
         return self.tree[0]
 
     def __getitem__(self, idx:int):
@@ -86,6 +71,26 @@ class SumTree:
 
         return idx-self.capacity+1, prefixsum
 
+    def batch_sample(self, batch_size:int):
+        sum = self.tree[0]
+        interval = sum/batch_size
+
+        prefixsums = np.arange(0, sum, interval) + np.random.uniform(0, interval, batch_size)
+
+        idxes = np.zeros(batch_size, dtype=np.int)
+
+        for _ in range(self.layer-1):
+            p = self.tree[idxes*2+1]
+            idxes = np.where(prefixsums<p, idxes*2+1, idxes*2+2)
+            prefixsums = np.where(idxes%2==0, prefixsums-self.tree[idxes-1], prefixsums)
+
+        priorities = self.tree[idxes]
+        idxes -= self.capacity-1
+
+        assert np.all(idxes>=0) and np.all(idxes<self.capacity)
+
+        return idxes, priorities
+
     def update(self, idx:int, priority:float):
         assert 0 <= idx < self.capacity
         # self.tree.flags.writeable = True
@@ -99,7 +104,7 @@ class SumTree:
             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
             idx = (idx-1) // 2
         
-        assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
+        assert round(np.sum(self.tree[-self.capacity:])) == round(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
         
     def batch_update(self, idxes:np.ndarray, priorities:np.ndarray):
         idxes += self.capacity-1
@@ -111,18 +116,16 @@ class SumTree:
             self.tree[idxes] = self.tree[2*idxes+1] + self.tree[2*idxes+2]
         
         # check
-        assert int(np.sum(self.tree[-self.capacity:])) == int(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
+        assert round(np.sum(self.tree[-self.capacity:])) == round(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
 
 
 class LocalBuffer:
-    __slots__ = ('alpha', 'num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'q_buf',
-                    'capacity', 'size', 'imitation', 'done', 'priority_tree', 'priority')
-    def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps, alpha=config.prioritized_replay_alpha):
+    __slots__ = ('num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'q_buf',
+                    'capacity', 'size', 'imitation', 'done', 'td_errors')
+    def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps):
         """
         Prioritized Replay buffer for each actor
         """
-
-        self.alpha = alpha
 
         self.num_agents = init_obs_pos[0].shape[0]
         # observation length should be (max steps+1)
@@ -142,109 +145,13 @@ class LocalBuffer:
         self.imitation = imitation
 
         self.obs_buf[0], self.pos_buf[0] = init_obs_pos
+
+        # self.td_errors = np.zeros(size, dtype=np.float32)
     
     def __len__(self):
         return self.size
 
-    def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
-
-        assert self.size < self.capacity
-
-        self.act_buf[self.size] = actions
-        self.rew_buf[self.size] = reward
-        self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
-        self.q_buf[self.size] = q_val
-
-        self.size += 1
-
-    def finish(self, last_q_val=None):
-        # last q value is None if done
-        if last_q_val is None:
-            self.done = True
-        else:
-            self.done = False
-            self.q_buf[self.size] = last_q_val
-        
-        self.obs_buf = self.obs_buf[:self.size+1]
-        self.pos_buf = self.pos_buf[:self.size+1]
-        self.act_buf = self.act_buf[:self.size]
-        self.rew_buf = self.rew_buf[:self.size]
-        self.q_buf = self.q_buf[:self.size+1]
-
-
-        # if self.imitation:
-        #     assert self.done, 'size {}'.format(self.size)
-
-        priorities = np.zeros((self.size), dtype=np.float32)
-
-        if self.imitation:
-            for i in range(self.size):
-                # n-steps forward = 4
-                forward = min(4, self.size-i)
-                # print(self.rew_buf[i:i+forward, 0])
-                # print(self.rew_buf[i:i+forward, 0]*discounts[:forward])
-                if config.distributional:
-                    next_dist = self.q_buf[i+forward, 0]
-                    next_q = np.mean(next_dist, axis=1)
-                    next_action = np.argmax(next_q)
-                    next_dist = next_dist[next_action]
-
-                    target_dist = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0) + (0.99**forward)*next_dist
-
-                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
-
-                    priorities[i] = quantile_huber_loss(curr_dist, target_dist)
-
-                else:
-                    reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
-                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
-                    priorities[i] = np.abs(reward-q_val)
-
-        else:
-            for i in range(self.size):
-                # forward = 1
-                if config.distributional:
-                    next_dist = self.q_buf[i+1, 0]
-                    next_q = np.mean(next_dist, axis=1)
-                    next_action = np.argmax(next_q)
-                    next_dist = next_dist[next_action]
-
-                    target_dist = self.rew_buf[i, 0]+0.99*next_dist
-
-                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
-
-                    priorities[i] = quantile_huber_loss(curr_dist, target_dist)
-                else:
-                    reward = self.rew_buf[i, 0]+0.99*np.max(self.q_buf[i+1, 0], axis=0)
-                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
-                    priorities[i] = np.abs(reward-q_val)
-
-        self.priority_tree = SumTree(self.capacity, priorities)
-        self.priority = self.priority_tree.sum()
-
-        del self.q_buf
-        
-    def sample(self, prefixsum):
-
-        idx, _ = self.priority_tree.find_prefixsum_idx(prefixsum)
-
-        assert 0 <= idx < self.size
-
-        priority = self.priority_tree[idx]
-
-        encoded_sample = self._encode_sample(idx)
-
-        return encoded_sample + (idx, priority)
-
-    def update_priority(self, idx, priority):
-        assert 0 <= idx < self.size, 'idx {} out of size {}'.format(idx, self.size)
-
-        self.priority_tree.update(idx, priority**self.alpha)
-        self.priority = self.priority_tree.sum()
-
-
-    def _encode_sample(self, idx):
-
+    def __getitem__(self, idx:int):
         if self.imitation:
             # n-step forward = 4
             forward = min(4, self.size-idx)
@@ -285,3 +192,74 @@ class LocalBuffer:
             next_pos = np.pad(next_pos, ((0,pad_len),(0,0)))
 
         return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps
+
+    def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
+
+        assert self.size < self.capacity
+
+        self.act_buf[self.size] = actions
+        self.rew_buf[self.size] = reward
+        self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
+        self.q_buf[self.size] = q_val
+
+        self.size += 1
+
+    def finish(self, last_q_val=None):
+        # last q value is None if done
+        if last_q_val is None:
+            self.done = True
+        else:
+            self.done = False
+            self.q_buf[self.size] = last_q_val
+        
+        self.obs_buf = self.obs_buf[:self.size+1]
+        self.pos_buf = self.pos_buf[:self.size+1]
+        self.act_buf = self.act_buf[:self.size]
+        self.rew_buf = self.rew_buf[:self.size]
+        self.q_buf = self.q_buf[:self.size+1]
+
+        self.td_errors = np.zeros(self.size, dtype=np.float32)
+
+        if self.imitation:
+            for i in range(self.size):
+                # n-steps forward = 4
+                forward = min(4, self.size-i)
+                # print(self.rew_buf[i:i+forward, 0])
+                # print(self.rew_buf[i:i+forward, 0]*discounts[:forward])
+                if config.distributional:
+                    next_dist = self.q_buf[i+forward, 0]
+                    next_q = np.mean(next_dist, axis=1)
+                    next_action = np.argmax(next_q)
+                    next_dist = next_dist[next_action]
+
+                    target_dist = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0) + (0.99**forward)*next_dist
+
+                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
+
+                    self.td_errors[i] = quantile_huber_loss(curr_dist, target_dist)
+
+                else:
+                    reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
+                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
+                    self.td_errors[i] = np.abs(reward-q_val)
+
+        else:
+            for i in range(self.size):
+                # forward = 1
+                if config.distributional:
+                    next_dist = self.q_buf[i+1, 0]
+                    next_q = np.mean(next_dist, axis=1)
+                    next_action = np.argmax(next_q)
+                    next_dist = next_dist[next_action]
+
+                    target_dist = self.rew_buf[i, 0]+0.99*next_dist
+
+                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
+
+                    self.td_errors[i] = quantile_huber_loss(curr_dist, target_dist)
+                else:
+                    reward = self.rew_buf[i, 0]+0.99*np.max(self.q_buf[i+1, 0], axis=0)
+                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
+                    self.td_errors[i] = np.abs(reward-q_val)
+
+        delattr(self, 'q_buf')

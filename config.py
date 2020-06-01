@@ -31,7 +31,7 @@ bt_steps = 48
 load_model = None
 
 local_buffer_size = max_steps
-global_buffer_size = 2048
+global_buffer_size = 2048*local_buffer_size
 
 # gradient norm clipping
 grad_norm_dqn=40
