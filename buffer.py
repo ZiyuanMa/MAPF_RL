@@ -1,7 +1,6 @@
 import random
 from typing import List
 import numpy as np
-from numba.experimental import jitclass
 from numba import int32, float32
 import torch
 import math

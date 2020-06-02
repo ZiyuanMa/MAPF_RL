@@ -124,7 +124,7 @@ class GlobalBuffer:
                 b_bt_steps,
                 b_next_bt_steps,
 
-                np.asarray(idxes),
+                idxes,
                 torch.from_numpy(weights).unsqueeze(1),
                 self.ptr
             )
