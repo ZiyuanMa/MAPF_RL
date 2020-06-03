@@ -146,7 +146,7 @@ class GlobalBuffer:
                 idxes = idxes[mask]
                 priorities = priorities[mask]
 
-            self.priority_tree.batch_update(idxes, priorities)
+            self.priority_tree.batch_update(idxes, priorities**self.alpha)
 
     def stats(self, interval:int):
         print('buffer update speed: {}/s'.format(self.counter/interval))
