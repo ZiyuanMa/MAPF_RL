@@ -120,7 +120,7 @@ class SumTree:
 
 class LocalBuffer:
     __slots__ = ('num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'q_buf',
-                    'capacity', 'size', 'imitation', 'done', 'td_errors')
+                    'capacity', 'size', 'imitation', 'done', 'td_errors', 'adj_list')
     def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps):
         """
         Prioritized Replay buffer for each actor
@@ -262,5 +262,21 @@ class LocalBuffer:
                     reward = self.rew_buf[i, 0]+0.99*np.max(self.q_buf[i+1, 0], axis=0)
                     q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
                     self.td_errors[i] = np.abs(reward-q_val)
+
+        # if config.distributional:
+        #     raise NotImplementedError
+        # else:
+        #     if self.imitation:
+        #         for i in range(self.size):
+        #             forward = min(4, self.size-i)
+        #             reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
+        #             q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
+        #             self.td_errors[i] = np.abs(reward-q_val)
+        #     else:
+        #         selected_q = self.q_buf[:, 0][self.act_buf[:, 0]]
+        #         max_q = np.max(self.q_buf[:, 0], axis=0)
+
+        relative_pos = np.abs(self.pos_buf[:, 1:, :2]-self.pos_buf[:, 0, :2])
+        self.adj_list = np.all(relative_pos<=config.obs_radius, axis=2)
 
         delattr(self, 'q_buf')

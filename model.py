@@ -79,13 +79,16 @@ class Network(nn.Module):
             ResBlock(pos_latent_dim),
         )
 
-        self.concat_encoder = nn.Sequential(
-
-            ResBlock(self.latent_dim), 
-            ResBlock(self.latent_dim),
-        )
+        self.concat_encoder = ResBlock(self.latent_dim)
+        
+        # nn.Sequential(
+        #     ResBlock(self.latent_dim), 
+        #     ResBlock(self.latent_dim),
+        # )
 
         self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
+
+        self.comm = nn.MultiheadAttention(self.latent_dim, 4)
 
         # dueling q structure
         if distributional:
@@ -115,7 +118,15 @@ class Network(nn.Module):
             _, self.hidden = self.recurrent(latent)
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
-        self.hidden = torch.squeeze(self.hidden)
+
+        print(self.hidden.shape)
+        hidden = self.hidden.transpose(0, 1)
+
+        agents_pos = pos[:, :2]
+
+        dis_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0)).abs()
+        adj_mat = (dis_mat<=config.obs_radius).all(2)
+        
 
         adv_val = self.adv(self.hidden)
         state_val = self.state(self.hidden)
