@@ -22,7 +22,7 @@ pos_shape = (4,)
 # basic training setting
 save_interval=2000
 gamma=0.99
-batch_size=256
+batch_size=128
 learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
@@ -50,7 +50,7 @@ double_q = False
 imitation_ratio = 0.2
 
 # dqn network setting
-cnn_channel = 64
+cnn_channel = 96
 obs_dim = 2
 obs_latent_dim = 496
 pos_dim = 4

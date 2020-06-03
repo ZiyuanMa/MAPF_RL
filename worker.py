@@ -24,7 +24,7 @@ class GlobalBuffer:
         self.size = 0
         self.ptr = 0
         self.buffer = [ None for _ in range(capacity) ]
-        self.priority_tree = SumTree(capacity)
+        self.priority_tree = SumTree(capacity*config.local_buffer_size)
         self.alpha = alpha
         self.beta = beta
         self.counter = 0
@@ -61,8 +61,7 @@ class GlobalBuffer:
     def add(self, buffer:LocalBuffer):
 
         with self.lock:
-            idx_start = self.ptr*config.local_buffer_size
-            idxes = np.arange(idx_start, idx_start+buffer.size)
+            idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
             # update buffer size
             if self.buffer[self.ptr] is not None:
                 self.size -= len(self.buffer[self.ptr])
@@ -71,7 +70,7 @@ class GlobalBuffer:
 
             self.priority_tree.batch_update(idxes, buffer.td_errors**self.alpha)
 
-            delattr(buffer, 'priorities')
+            delattr(buffer, 'td_errors')
 
             self.buffer[self.ptr] = buffer
 

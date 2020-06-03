@@ -44,7 +44,7 @@ class SumTree:
         self.size = 0
 
     def sum(self):
-        assert round(np.sum(self.tree[-self.capacity:])) == round(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
+        assert np.sum(self.tree[-self.capacity:])-self.tree[0] < 0.1, 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
         return self.tree[0]
 
     def __getitem__(self, idx:int):
@@ -103,7 +103,7 @@ class SumTree:
             self.tree[idx] = self.tree[2*idx+1] + self.tree[2*idx+2]
             idx = (idx-1) // 2
         
-        assert round(np.sum(self.tree[-self.capacity:])) == round(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
+        assert np.sum(self.tree[-self.capacity:])-self.tree[0] < 0.1, 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
         
     def batch_update(self, idxes:np.ndarray, priorities:np.ndarray):
         idxes += self.capacity-1
@@ -115,7 +115,7 @@ class SumTree:
             self.tree[idxes] = self.tree[2*idxes+1] + self.tree[2*idxes+2]
         
         # check
-        assert round(np.sum(self.tree[-self.capacity:])) == round(self.tree[0]), 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
+        assert np.sum(self.tree[-self.capacity:])-self.tree[0] < 0.1, 'sum is {} but root is {}'.format(np.sum(self.tree[-self.capacity:]), self.tree[0])
 
 
 class LocalBuffer:
@@ -151,6 +151,8 @@ class LocalBuffer:
         return self.size
 
     def __getitem__(self, idx:int):
+        assert idx < self.size
+
         if self.imitation:
             # n-step forward = 4
             forward = min(4, self.size-idx)
@@ -217,7 +219,7 @@ class LocalBuffer:
         self.rew_buf = self.rew_buf[:self.size]
         self.q_buf = self.q_buf[:self.size+1]
 
-        self.td_errors = np.zeros(self.size, dtype=np.float32)
+        self.td_errors = np.zeros(self.capacity, dtype=np.float32)
 
         if self.imitation:
             for i in range(self.size):

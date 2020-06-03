@@ -18,7 +18,7 @@ random.seed(0)
 if __name__ == '__main__':
     ray.init()
 
-    buffer = GlobalBuffer.remote(config.global_buffer_size)
+    buffer = GlobalBuffer.remote(2048)
     learner = Learner.remote(buffer)
     num_actors = 10
     actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), learner, buffer) for i in range(num_actors)]
