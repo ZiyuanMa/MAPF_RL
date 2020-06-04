@@ -42,6 +42,23 @@ class ResBlock(nn.Module):
 
         return x
 
+class CommBlock(nn.Module):
+    def __init__(self, embed_dim, num_heads=config.num_comm_heads, num_layers=config.num_comm_layers):
+        super().__init__()
+
+        self.self_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim, num_heads) for i in range(num_layers)])
+
+
+    def forward(self, latent, key_padding_mask=None, attn_mask=None):
+
+        for attn_layer in self.self_attn:
+            latent = attn_layer(latent, latent, latent, key_padding_mask=None, attn_mask=None)[0]
+            latent = F.relu(latent)
+
+        return latent
+
+
+
 class Network(nn.Module):
     def __init__(self, cnn_channel=config.cnn_channel,
                 obs_dim=config.obs_dim, obs_latent_dim=config.obs_latent_dim,
@@ -88,7 +105,7 @@ class Network(nn.Module):
 
         self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
 
-        self.comm = nn.MultiheadAttention(self.latent_dim, 4)
+        self.comm = CommBlock(self.latent_dim)
 
         # dueling q structure
         if distributional:
@@ -128,7 +145,7 @@ class Network(nn.Module):
         adj_mask = (pos_mat<=config.obs_radius).all(2)
         dis_mask = dis_mat.argsort()<config.max_comm_agents
         
-        hidden = self.comm(hidden, hidden, hidden, attn_mask=torch.bitwise_and(adj_mask, dis_mask))[0]
+        hidden = self.comm(hidden, attn_mask=torch.bitwise_and(adj_mask, dis_mask))
         # print(hidden)
         hidden = hidden.squeeze()
 
@@ -177,7 +194,7 @@ class Network(nn.Module):
         hidden = hidden.view(-1, config.max_comm_agents, self.latent_dim).transpose(0, 1)
         # print(hidden.shape)
         # print(comm_mask.shape)
-        hidden = self.comm(hidden, hidden, hidden, key_padding_mask=comm_mask)[0][0]
+        hidden = self.comm(hidden, key_padding_mask=comm_mask)[0]
         # print(hidden.shape)
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
