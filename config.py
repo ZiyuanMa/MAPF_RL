@@ -5,7 +5,6 @@ map_length = 20
 num_agents = 4
 obs_radius = 4
 reward_fn = dict(move=-0.075,
-                move_to_goal=0,
                 stay_on_goal=0,
                 stay_off_goal=-0.125,
                 collision=-0.5,
@@ -23,7 +22,7 @@ pos_shape = (4,)
 save_interval=2000
 gamma=0.99
 batch_size=128
-learning_starts=10000
+learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
