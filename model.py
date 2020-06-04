@@ -119,17 +119,20 @@ class Network(nn.Module):
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
 
-        print(self.hidden.shape)
         hidden = self.hidden.transpose(0, 1)
 
         agents_pos = pos[:, :2]
 
-        dis_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0)).abs()
-        adj_mat = (dis_mat<=config.obs_radius).all(2)
+        pos_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0))
+        dis_mat = (pos_mat[:,:,0]**2+pos_mat[:,:,1]**2).sqrt().squeeze()
+        adj_mask = (pos_mat<=config.obs_radius).all(2)
+        dis_mask = dis_mat.argsort()<config.max_comm_agents
         
+        hidden = self.comm(hidden, hidden, hidden, need_weights=False, attn_mask=torch.bitwise_and(adj_mask, dis_mask))
+        hidden = hidden.squeeze()
 
-        adv_val = self.adv(self.hidden)
-        state_val = self.state(self.hidden)
+        adv_val = self.adv(hidden)
+        state_val = self.state(hidden)
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
@@ -138,25 +141,20 @@ class Network(nn.Module):
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
             actions = q_val.mean(2).argmax(1).tolist()
-
-
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
             actions = torch.argmax(q_val, 1).tolist()
-
-        self.hidden = self.hidden.unsqueeze(0)
 
         return actions, q_val
 
     def reset(self):
         self.hidden = None
 
-    def bootstrap(self, obs, pos, steps):
+    def bootstrap(self, obs, pos, steps, comm_mask):
         batch_size = obs.size(0)
 
         obs = obs.view(-1, self.obs_dim, 9, 9)
         pos = pos.view(-1, self.pos_dim)
-
 
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
@@ -175,6 +173,10 @@ class Network(nn.Module):
         _, hidden = self.recurrent(latent)
 
         hidden = torch.squeeze(hidden)
+
+        hidden = hidden.view(-1, config.max_comm_agents, self.latent_dim).transpose(0, 1)
+
+        hidden = self.comm(hidden, hidden, hidden, need_weights=False, key_padding_mask=comm_mask).squeeze()
         
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)

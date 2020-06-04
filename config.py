@@ -55,3 +55,6 @@ obs_dim = 2
 obs_latent_dim = 496
 pos_dim = 4
 pos_latent_dim = 16
+
+# communication
+max_comm_agents = 3 # including agent itself, means one can at most communicate with (max_comm_agents-1) agents
