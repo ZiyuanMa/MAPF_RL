@@ -128,7 +128,8 @@ class Network(nn.Module):
         adj_mask = (pos_mat<=config.obs_radius).all(2)
         dis_mask = dis_mat.argsort()<config.max_comm_agents
         
-        hidden = self.comm(hidden, hidden, hidden, need_weights=False, attn_mask=torch.bitwise_and(adj_mask, dis_mask))
+        hidden = self.comm(hidden, hidden, hidden, attn_mask=torch.bitwise_and(adj_mask, dis_mask))[0]
+        # print(hidden)
         hidden = hidden.squeeze()
 
         adv_val = self.adv(hidden)
@@ -151,7 +152,6 @@ class Network(nn.Module):
         self.hidden = None
 
     def bootstrap(self, obs, pos, steps, comm_mask):
-        batch_size = obs.size(0)
 
         obs = obs.view(-1, self.obs_dim, 9, 9)
         pos = pos.view(-1, self.pos_dim)
@@ -165,7 +165,7 @@ class Network(nn.Module):
         # latent = latent.split(steps)
         # latent = pad_sequence(latent, batch_first=True)
 
-        latent = latent.view(batch_size, config.bt_steps, self.latent_dim)
+        latent = latent.view(config.batch_size*config.max_comm_agents, config.bt_steps, self.latent_dim)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
@@ -175,9 +175,10 @@ class Network(nn.Module):
         hidden = torch.squeeze(hidden)
 
         hidden = hidden.view(-1, config.max_comm_agents, self.latent_dim).transpose(0, 1)
-
-        hidden = self.comm(hidden, hidden, hidden, need_weights=False, key_padding_mask=comm_mask).squeeze()
-        
+        # print(hidden.shape)
+        # print(comm_mask.shape)
+        hidden = self.comm(hidden, hidden, hidden, key_padding_mask=comm_mask)[0][0]
+        # print(hidden.shape)
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 

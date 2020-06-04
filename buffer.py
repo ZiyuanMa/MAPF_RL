@@ -167,40 +167,53 @@ class LocalBuffer:
         else:
             done = False
 
-        adj_list = np.argwhere(self.adj_mask[idx]).squeeze()
+        adj_list = np.argwhere(self.adj_mask[idx]).squeeze(1)
         # obs and pos
         bt_steps = min(idx+1, config.bt_steps)
         # obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
         # pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
-        obs = self.obs_buf[idx+1-bt_steps:idx+1, adj_list]
-        pos = self.pos_buf[idx+1-bt_steps:idx+1, adj_list]
+        obs = self.obs_buf[idx+1-bt_steps:idx+1, adj_list].swapaxes(0,1)
+        pos = self.pos_buf[idx+1-bt_steps:idx+1, adj_list].swapaxes(0,1)
 
-        agent_pad = config.max_comm_agents-len(adj_list)
+        # if len(adj_list)==1:
+        #     obs = np.expand_dims(obs, 1)
+        #     pos = np.expand_dims(pos, 1)
 
-        if bt_steps < config.bt_steps:
+        # print(obs.shape)
+        # print(adj_list)
+        # print(type(adj_list))
+
+        if bt_steps < config.bt_steps or len(adj_list)<config.max_comm_agents:
             pad_len = config.bt_steps-bt_steps
-            obs = np.pad(obs, ((0,pad_len), (0,agent_pad), (0,0), (0,0), (0,0)))
-            pos = np.pad(pos, ((0,pad_len), (0,agent_pad), (0,0)))
+            agent_pad = config.max_comm_agents-len(adj_list)
+            obs = np.pad(obs, ((0,agent_pad),(0,pad_len), (0,0), (0,0), (0,0)))
+            pos = np.pad(pos, ((0,agent_pad),(0,pad_len), (0,0)))
 
         # next obs and next pos
+        next_adj_list = np.argwhere(self.adj_mask[idx+1]).squeeze(1)
         next_bt_steps = min(idx+1+forward, config.bt_steps)
         # next_obs = np.swapaxes(self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
         # next_pos = np.swapaxes(self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
-        next_obs = self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward, adj_list]
-        next_pos = self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward, adj_list]
+        next_obs = self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward, next_adj_list].swapaxes(0,1)
+        next_pos = self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward, next_adj_list].swapaxes(0,1)
 
-        if next_bt_steps < config.bt_steps:
+        # if len(next_adj_list)==1:
+        #     next_obs = np.expand_dims(next_obs, 1)
+        #     next_pos = np.expand_dims(next_pos, 1)
+
+        if next_bt_steps < config.bt_steps or len(next_adj_list)<config.max_comm_agents:
             pad_len = config.bt_steps-next_bt_steps
-            next_obs = np.pad(next_obs, ((0,pad_len), (0,agent_pad), (0,0), (0,0), (0,0)))
-            next_pos = np.pad(next_pos, ((0,pad_len), (0,agent_pad), (0,0)))
+            agent_pad = config.max_comm_agents-len(next_adj_list)
+            next_obs = np.pad(next_obs, ((0,agent_pad), (0,pad_len), (0,0), (0,0), (0,0)))
+            next_pos = np.pad(next_pos, ((0,agent_pad), (0,pad_len), (0,0)))
 
         comm_mask = np.ones(config.max_comm_agents, dtype=np.bool)
-        comm_mask[:len(adj_list)] = 0
+        comm_mask[:np.sum(self.adj_mask[idx])] = 0
 
         next_comm_mask = np.ones(config.max_comm_agents, dtype=np.bool)
         next_comm_mask[:np.sum(self.adj_mask[idx+1])] = 0
 
-        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps, comm_mask, next_comm_mask
+        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, [bt_steps for _ in range(config.max_comm_agents)], [next_bt_steps for _ in range(config.max_comm_agents)], comm_mask, next_comm_mask
 
     def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
 
@@ -284,10 +297,13 @@ class LocalBuffer:
         #         selected_q = self.q_buf[:, 0][self.act_buf[:, 0]]
         #         max_q = np.max(self.q_buf[:, 0], axis=0)
 
-        relative_pos = np.abs(self.pos_buf[:, :, :2]-self.pos_buf[:, 0, :2])
+        relative_pos = np.abs(self.pos_buf[:, :, :2]-np.expand_dims(self.pos_buf[:, 0, :2], 1))
         in_obs_mask = np.all(relative_pos<=config.obs_radius, axis=2)
         relative_dis = np.squeeze(np.sqrt(relative_pos[:, :, 0]**2+relative_pos[:, :, 1]**2))
         dis_mask = relative_dis.argsort() < config.max_comm_agents
-        self.adj_mask = np.logical_and(in_obs_mask, dis_mask)
+        # print(in_obs_mask)
+        # print(dis_mask)
+        self.adj_mask = np.bitwise_and(in_obs_mask, dis_mask)
+        # print(self.adj_mask.shape)
 
         delattr(self, 'q_buf')

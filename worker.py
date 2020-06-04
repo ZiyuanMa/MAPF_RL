@@ -103,8 +103,8 @@ class GlobalBuffer:
 
                 b_done.append(done)
                 b_steps.append(steps)
-                b_bt_steps.append(bt_steps)
-                b_next_bt_steps.append(next_bt_steps)
+                b_bt_steps += bt_steps
+                b_next_bt_steps += next_bt_steps
                 b_comm_mask.append(comm_mask)
                 b_next_comm_mask.append(next_comm_mask)
 
@@ -124,8 +124,8 @@ class GlobalBuffer:
                 torch.FloatTensor(b_steps).unsqueeze(1),
                 b_bt_steps,
                 b_next_bt_steps,
-                torch.ByteTensor(np.stack(b_comm_mask)),
-                torch.ByteTensor(np.stack(next_comm_mask)),
+                torch.from_numpy(np.stack(b_comm_mask)),
+                torch.from_numpy(np.stack(b_next_comm_mask)),
 
                 idxes,
                 torch.from_numpy(weights).unsqueeze(1),
@@ -207,7 +207,7 @@ class Learner:
             b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, b_comm_mask, b_next_comm_mask, idxes, weights, old_ptr = data
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
             b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
-
+            b_comm_mask, b_next_comm_mask = b_comm_mask.to(self.device), b_next_comm_mask.to(self.device)
             if config.distributional:
                 raise NotImplementedError
                 # with torch.no_grad():

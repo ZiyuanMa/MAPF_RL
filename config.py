@@ -22,8 +22,8 @@ pos_shape = (4,)
 # basic training setting
 save_interval=2000
 gamma=0.99
-batch_size=128
-learning_starts=50000
+batch_size=32
+learning_starts=10000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
