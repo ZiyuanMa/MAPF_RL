@@ -49,10 +49,16 @@ class CommBlock(nn.Module):
         self.self_attn = nn.ModuleList([nn.MultiheadAttention(64, num_heads, kdim=64, vdim=embed_dim) for i in range(num_layers)])
 
 
-    def forward(self, latent, attn_mask=None):
+    def forward(self, latent, comm_mask):
+        attn_mask = torch.where(comm_mask, 0, -float('inf'))
+        if attn_mask.dim == 3:
+            attn_mask = attn_mask.repeat_interleave(config.num_comm_heads, 0)
+        
+        identity_mask = comm_mask.sum(keepdim=True) == 1
 
         for attn_layer in self.self_attn:
-            res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
+            res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0].squeeze()
+            res_latent = res_latent.masked_fill(identity_mask, 0)
             latent += res_latent
 
         return latent
@@ -142,15 +148,15 @@ class Network(nn.Module):
         # masks for communication block
         agents_pos = pos[:, :2]
         pos_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0))
-        dis_mat = (pos_mat[:,:,0]**2+pos_mat[:,:,1]**2).sqrt().squeeze()
-        adj_mask = (pos_mat<=config.obs_radius).all(2)
-        # mask out agent with no communication with other agents
-        comm_mask = adj_mask.sum(keepdim=True) > 1 
+        dis_mat = (pos_mat[:,:,0]**2+pos_mat[:,:,1]**2).sqrt()
+        # mask out agents that out of range of FOV
+        in_obs_mask = (pos_mat<=config.obs_radius).all(2)
+        # mask out agents that too far away from agent 
         dis_mask = dis_mat.argsort()<config.max_comm_agents
-        attn_mask = torch.bitwise_and(adj_mask, dis_mask)
-        attn_mask *= comm_mask
+        comm_mask = torch.bitwise_and(in_obs_mask, dis_mask)
+
         
-        self.hidden = self.comm(self.hidden, attn_mask=attn_mask)
+        self.hidden = self.comm(self.hidden, comm_mask)
         # print(hidden)
         self.hidden = self.hidden.squeeze()
 
