@@ -46,14 +46,14 @@ class CommBlock(nn.Module):
     def __init__(self, embed_dim, num_heads=config.num_comm_heads, num_layers=config.num_comm_layers):
         super().__init__()
 
-        self.self_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim, num_heads) for i in range(num_layers)])
+        self.self_attn = nn.ModuleList([nn.MultiheadAttention(64, num_heads, kdim=64, vdim=embed_dim) for i in range(num_layers)])
 
 
-    def forward(self, latent, key_padding_mask=None, attn_mask=None):
+    def forward(self, latent, attn_mask=None):
 
         for attn_layer in self.self_attn:
-            latent = attn_layer(latent, latent, latent, key_padding_mask=None, attn_mask=None)[0]
-            latent = F.relu(latent)
+            res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
+            latent += res_latent
 
         return latent
 
@@ -103,7 +103,7 @@ class Network(nn.Module):
         #     ResBlock(self.latent_dim),
         # )
 
-        self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
+        self.recurrent = nn.GRUCell(self.latent_dim, self.latent_dim)
 
         self.comm = CommBlock(self.latent_dim)
 
@@ -129,28 +129,33 @@ class Network(nn.Module):
         pos_latent = self.pos_encoder(pos)
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
-        latent = latent.unsqueeze(1)
-        self.recurrent.flatten_parameters()
+
         if self.hidden is None:
             _, self.hidden = self.recurrent(latent)
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
+        
 
-        hidden = self.hidden.transpose(0, 1)
+        # from 1 x num_agents x latent_dim become num_agents x 1 x latent_dim
+        self.hidden = self.hidden.unsqueeze(1)
 
+        # masks for communication block
         agents_pos = pos[:, :2]
-
         pos_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0))
         dis_mat = (pos_mat[:,:,0]**2+pos_mat[:,:,1]**2).sqrt().squeeze()
         adj_mask = (pos_mat<=config.obs_radius).all(2)
+        # mask out agent with no communication with other agents
+        comm_mask = adj_mask.sum(keepdim=True) > 1 
         dis_mask = dis_mat.argsort()<config.max_comm_agents
+        attn_mask = torch.bitwise_and(adj_mask, dis_mask)
+        attn_mask *= comm_mask
         
-        hidden = self.comm(hidden, attn_mask=torch.bitwise_and(adj_mask, dis_mask))
+        self.hidden = self.comm(self.hidden, attn_mask=attn_mask)
         # print(hidden)
-        hidden = hidden.squeeze()
+        self.hidden = self.hidden.squeeze()
 
-        adv_val = self.adv(hidden)
-        state_val = self.state(hidden)
+        adv_val = self.adv(self.hidden)
+        state_val = self.state(self.hidden)
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
@@ -186,7 +191,7 @@ class Network(nn.Module):
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
-        self.recurrent.flatten_parameters()
+
         _, hidden = self.recurrent(latent)
 
         hidden = torch.squeeze(hidden)
