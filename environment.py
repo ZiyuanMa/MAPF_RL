@@ -252,8 +252,6 @@ class Environment:
         rewards = []
         next_pos = np.copy(self.agents_pos)
 
-        vector = self.goals_pos-self.agents_pos
-
         # remove unmoving agent id
         for agent_id in checking_list.copy():
             if actions[agent_id] == 0:
@@ -267,13 +265,8 @@ class Environment:
                 checking_list.remove(agent_id)
             else:
                 # move
-                action_direc = action_list[actions[agent_id]]
-                next_pos[agent_id] += action_direc
-                # if agent is moving to goal or away from goal
-                if np.dot(vector[agent_id], action_direc) > 0:
-                    rewards.append(self.reward_fn['move']+self.reward_fn['move_to_goal'])
-                else:
-                    rewards.append(self.reward_fn['move']-self.reward_fn['move_to_goal'])
+                next_pos[agent_id] += action_list[actions[agent_id]]
+                rewards.append(self.reward_fn['move'])
 
         # assert len(rewards)==len(actions), '{}, {}'.format(len(rewards), len(actions))
 
