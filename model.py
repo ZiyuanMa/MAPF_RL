@@ -196,10 +196,19 @@ class Network(nn.Module):
 
         latent = latent.view(config.batch_size*config.num_agents, config.bt_steps, self.latent_dim).transpose(0, 1)
 
+        hidden_buffer = []
         hidden = self.recurrent(latent[0])
+        hidden = self.comm(hidden, comm_mask[:, 0])
+        hidden_buffer.append(hidden)
         for i in range(1, config.bt_steps):
-            # hidden size: config.batch_size*config.num_agents x self.latent_dim
+            # hidden size: batch_size*num_agents x self.latent_dim
             hidden = self.recurrent(latent[i], hidden)
+            hidden = self.comm(hidden, comm_mask[:,i])
+            # only hidden from agent 0
+            hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
+
+        # hidden buffer size: bt_steps x batch_size x self.latent_dim
+        hidden_buffer = torch.stack(hidden_buffer)
 
         hidden = torch.squeeze(hidden)
 
