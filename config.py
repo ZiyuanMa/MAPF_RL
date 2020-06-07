@@ -2,7 +2,7 @@
 ####################    environment     ####################
 ############################################################
 map_length = 20
-num_agents = 4
+num_agents = 8
 obs_radius = 4
 reward_fn = dict(move=-0.075,
                 stay_on_goal=0,

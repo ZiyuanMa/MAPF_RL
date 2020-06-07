@@ -54,7 +54,7 @@ class CommBlock(nn.Module):
         if attn_mask.dim == 3:
             attn_mask = attn_mask.repeat_interleave(config.num_comm_heads, 0)
         
-        identity_mask = comm_mask.sum(keepdim=True) == 1
+        identity_mask = comm_mask.sum(keepdim=True) <= 1
 
         for attn_layer in self.self_attn:
             res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0].squeeze()
@@ -203,20 +203,16 @@ class Network(nn.Module):
         for i in range(1, config.bt_steps):
             # hidden size: batch_size*num_agents x self.latent_dim
             hidden = self.recurrent(latent[i], hidden)
-            hidden = self.comm(hidden, comm_mask[:,i])
+            hidden = self.comm(hidden, comm_mask[:, i])
             # only hidden from agent 0
             hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
 
-        # hidden buffer size: bt_steps x batch_size x self.latent_dim
-        hidden_buffer = torch.stack(hidden_buffer)
+        # hidden buffer size: batch_size x bt_steps x self.latent_dim
+        hidden_buffer = torch.stack(hidden_buffer).transpose(0, 1)
 
-        hidden = torch.squeeze(hidden)
+        # hidden size: batch_size x self.latent_dim
+        hidden = hidden_buffer[torch.arange(config.batch_size), steps-1]
 
-        hidden = hidden.view(-1, config.max_comm_agents, self.latent_dim).transpose(0, 1)
-        # print(hidden.shape)
-        # print(comm_mask.shape)
-        hidden = self.comm(hidden, key_padding_mask=comm_mask)[0]
-        # print(hidden.shape)
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
