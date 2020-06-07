@@ -142,7 +142,7 @@ class Network(nn.Module):
             _, self.hidden = self.recurrent(latent, self.hidden)
         
 
-        # from 1 x num_agents x latent_dim become num_agents x 1 x latent_dim
+        # from num_agents x latent_dim become num_agents x 1 x latent_dim
         self.hidden = self.hidden.unsqueeze(1)
 
         # masks for communication block
@@ -180,6 +180,7 @@ class Network(nn.Module):
         self.hidden = None
 
     def bootstrap(self, obs, pos, steps, comm_mask):
+        # comm_mask size: batch_size x bt_steps x num_agents x num_agents
 
         obs = obs.view(-1, self.obs_dim, 9, 9)
         pos = pos.view(-1, self.pos_dim)
@@ -193,12 +194,12 @@ class Network(nn.Module):
         # latent = latent.split(steps)
         # latent = pad_sequence(latent, batch_first=True)
 
-        latent = latent.view(config.batch_size*config.max_comm_agents, config.bt_steps, self.latent_dim)
+        latent = latent.view(config.batch_size*config.num_agents, config.bt_steps, self.latent_dim).transpose(0, 1)
 
-        latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
-
-
-        _, hidden = self.recurrent(latent)
+        hidden = self.recurrent(latent[0])
+        for i in range(1, config.bt_steps):
+            # hidden size: config.batch_size*config.num_agents x self.latent_dim
+            hidden = self.recurrent(latent[i], hidden)
 
         hidden = torch.squeeze(hidden)
 
