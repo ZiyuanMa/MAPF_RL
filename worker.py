@@ -167,7 +167,7 @@ class Learner:
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[4000, 60000, 70000], gamma=0.5)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[4000, 70000, 85000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
