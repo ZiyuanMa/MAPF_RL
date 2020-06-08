@@ -137,11 +137,10 @@ class Network(nn.Module):
         latent = self.concat_encoder(concat_latent)
 
         if self.hidden is None:
-            _, self.hidden = self.recurrent(latent)
+            self.hidden = self.recurrent(latent)
         else:
-            _, self.hidden = self.recurrent(latent, self.hidden)
+            self.hidden = self.recurrent(latent, self.hidden)
         
-
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
         self.hidden = self.hidden.unsqueeze(1)
 
@@ -154,10 +153,8 @@ class Network(nn.Module):
         # mask out agents that too far away from agent 
         dis_mask = dis_mat.argsort()<config.max_comm_agents
         comm_mask = torch.bitwise_and(in_obs_mask, dis_mask)
-
-        
+      
         self.hidden = self.comm(self.hidden, comm_mask)
-        # print(hidden)
         self.hidden = self.hidden.squeeze()
 
         adv_val = self.adv(self.hidden)
