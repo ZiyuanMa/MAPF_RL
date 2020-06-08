@@ -124,8 +124,8 @@ class GlobalBuffer:
                 torch.FloatTensor(b_steps).unsqueeze(1),
                 b_bt_steps,
                 b_next_bt_steps,
-                torch.from_numpy(np.stack(b_comm_mask)),
-                torch.from_numpy(np.stack(b_next_comm_mask)),
+                np.stack(b_comm_mask),
+                np.stack(b_next_comm_mask),
 
                 idxes,
                 torch.from_numpy(weights).unsqueeze(1),
