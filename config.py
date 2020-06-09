@@ -59,5 +59,5 @@ pos_latent_dim = 16
 max_comm_agents = 3 # including agent itself, means one can at most communicate with (max_comm_agents-1) agents
 
 # communication block
-num_comm_layers = 1
+num_comm_layers = 2
 num_comm_heads = 4

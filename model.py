@@ -48,15 +48,22 @@ class CommBlock(nn.Module):
 
         self.self_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim, num_heads) for _ in range(num_layers)])
 
+        self.update_cell = nn.GRUCell(embed_dim, embed_dim)
+
 
     def forward(self, latent, comm_mask):
+
+        # agent indices of agent that use communication
+        comm_idx = (comm_mask.sum(dim=-1) <= 1).nonzero(as_tuple=True)
+        # no agent use communication, return
+        if len(comm_idx[0]) == 0:
+            return latent
+
         # print(comm_mask)
         attn_mask = comm_mask==False
         if attn_mask.dim == 3:
             attn_mask = attn_mask.repeat_interleave(config.num_comm_heads, 0)
         
-        
-        identity_mask = (comm_mask.sum(dim=-1, keepdim=True) <= 1).unsqueeze(-1)
 
         for attn_layer in self.self_attn:
             # print(latent.shape)
@@ -65,20 +72,14 @@ class CommBlock(nn.Module):
                 print(latent)
                 raise Exception
             # print(latent.shape)
-            res_latent, weight = attn_layer(latent, latent, latent)
-            # print(weight)
-            # print(res_latent.shape)
-            masked_res_latent = res_latent.masked_fill(identity_mask, 0)
-            # print(res_latent.shape)
-            if torch.isnan(res_latent).any():
-                # print(attn_mask)
-                # print(identity_mask)
-                print(latent)
-                print(weight)
-                print(res_latent)
-                print(masked_res_latent)
+
+            info = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
+            
+            if len(comm_idx)==1:
+                batch_idx = torch.zeros(len(comm_idx[0]), dtype=torch.long)
+                latent[comm_idx[0], batch_idx] = self.update_cell(info[comm_idx[0], batch_idx], latent[comm_idx[0], batch_idx])
+            else:
                 raise Exception
-            latent += res_latent
 
             # if torch.isnan(latent).any():
             #     print(attn_mask)
@@ -171,7 +172,7 @@ class Network(nn.Module):
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
         self.hidden = self.hidden.unsqueeze(1)
 
-        print(self.hidden)
+        # print(self.hidden)
 
         # masks for communication block
         agents_pos = pos[:, :2]
