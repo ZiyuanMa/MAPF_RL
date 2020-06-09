@@ -46,26 +46,45 @@ class CommBlock(nn.Module):
     def __init__(self, embed_dim, num_heads=config.num_comm_heads, num_layers=config.num_comm_layers):
         super().__init__()
 
-        self.self_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim, num_heads) for i in range(num_layers)])
+        self.self_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim, num_heads) for _ in range(num_layers)])
 
 
     def forward(self, latent, comm_mask):
         # print(comm_mask)
-        attn_mask = torch.where(comm_mask, torch.FloatTensor([0]), torch.FloatTensor([-float('inf')]))
+        attn_mask = comm_mask==False
         if attn_mask.dim == 3:
             attn_mask = attn_mask.repeat_interleave(config.num_comm_heads, 0)
         
-        # print(attn_mask)
         
         identity_mask = (comm_mask.sum(dim=-1, keepdim=True) <= 1).unsqueeze(-1)
 
         for attn_layer in self.self_attn:
             # print(latent.shape)
-            res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
+            # res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
+            if torch.isnan(latent).any():
+                print(latent)
+                raise Exception
+            # print(latent.shape)
+            res_latent, weight = attn_layer(latent, latent, latent)
+            # print(weight)
             # print(res_latent.shape)
-            res_latent = res_latent.masked_fill(identity_mask, 0)
+            masked_res_latent = res_latent.masked_fill(identity_mask, 0)
             # print(res_latent.shape)
+            if torch.isnan(res_latent).any():
+                # print(attn_mask)
+                # print(identity_mask)
+                print(latent)
+                print(weight)
+                print(res_latent)
+                print(masked_res_latent)
+                raise Exception
             latent += res_latent
+
+            # if torch.isnan(latent).any():
+            #     print(attn_mask)
+            #     print(identity_mask)
+            #     print(latent)
+            #     raise Exception
 
         return latent
 
@@ -152,6 +171,8 @@ class Network(nn.Module):
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
         self.hidden = self.hidden.unsqueeze(1)
 
+        print(self.hidden)
+
         # masks for communication block
         agents_pos = pos[:, :2]
         pos_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0))
@@ -160,13 +181,12 @@ class Network(nn.Module):
         # mask out agents that out of range of FOV
         # print(pos_mat)
         in_obs_mask = (pos_mat<=config.obs_radius).all(2)
-        # mask out agents that too far away from agent 
-        dis_mask = dis_mat.argsort()<config.max_comm_agents
+        # mask out agents that too far away from agent
+        _, ranking = dis_mat.topk(config.max_comm_agents, dim=1, largest=False)
+        dis_mask = torch.zeros((config.num_agents, config.num_agents), dtype=torch.bool)
+        dis_mask.scatter_(1, ranking, True)
         # print(in_obs_mask)
 
-        if not dis_mask[1,1]:
-            print(dis_mat)
-            print(dis_mat.argsort())
         comm_mask = torch.bitwise_and(in_obs_mask, dis_mask)
         # assert dis_mask[0, 0] == 0, dis_mat
         self.hidden = self.comm(self.hidden, comm_mask)
