@@ -68,9 +68,6 @@ class CommBlock(nn.Module):
         for attn_layer in self.self_attn:
             # print(latent.shape)
             # res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
-            if torch.isnan(latent).any():
-                print(latent)
-                raise Exception
             # print(latent.shape)
 
             info = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
@@ -79,8 +76,7 @@ class CommBlock(nn.Module):
                 batch_idx = torch.zeros(len(comm_idx[0]), dtype=torch.long)
                 latent[comm_idx[0], batch_idx] = self.update_cell(info[comm_idx[0], batch_idx], latent[comm_idx[0], batch_idx])
             else:
-                raise Exception
-
+                latent[comm_idx[0], comm_idx[1]] = self.update_cell(info[comm_idx[0], comm_idx[1]], latent[comm_idx[0], comm_idx[1]])
             # if torch.isnan(latent).any():
             #     print(attn_mask)
             #     print(identity_mask)

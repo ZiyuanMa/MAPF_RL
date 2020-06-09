@@ -297,5 +297,6 @@ class LocalBuffer:
         dis_mask = relative_dis.argsort() < config.max_comm_agents
 
         self.comm_mask = np.bitwise_and(in_obs_mask, dis_mask)
+        print(self.comm_mask.shape)
 
         delattr(self, 'q_buf')
