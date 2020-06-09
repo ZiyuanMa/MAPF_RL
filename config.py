@@ -2,7 +2,7 @@
 ####################    environment     ####################
 ############################################################
 map_length = 20
-num_agents = 8
+num_agents = 6
 obs_radius = 4
 reward_fn = dict(move=-0.075,
                 stay_on_goal=0,
@@ -51,7 +51,7 @@ imitation_ratio = 0.2
 # dqn network setting
 cnn_channel = 64
 obs_dim = 2
-obs_latent_dim = 240
+obs_latent_dim = 496
 pos_dim = 4
 pos_latent_dim = 16
 
