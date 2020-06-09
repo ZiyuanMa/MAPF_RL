@@ -103,8 +103,8 @@ class GlobalBuffer:
 
                 b_done.append(done)
                 b_steps.append(steps)
-                b_bt_steps += bt_steps
-                b_next_bt_steps += next_bt_steps
+                b_bt_steps.append(bt_steps)
+                b_next_bt_steps.append(next_bt_steps)
                 b_comm_mask.append(comm_mask)
                 b_next_comm_mask.append(next_comm_mask)
 
@@ -122,8 +122,8 @@ class GlobalBuffer:
 
                 torch.FloatTensor(b_done).unsqueeze(1),
                 torch.FloatTensor(b_steps).unsqueeze(1),
-                b_bt_steps,
-                b_next_bt_steps,
+                torch.LongTensor(b_bt_steps),
+                torch.LongTensor(b_next_bt_steps),
                 torch.from_numpy(np.stack(b_comm_mask)),
                 torch.from_numpy(np.stack(b_next_comm_mask)),
 
@@ -166,6 +166,7 @@ class GlobalBuffer:
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
     def __init__(self, buffer:GlobalBuffer):
+        torch.cuda.set_device(0)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = Network()
         self.model.to(self.device)
@@ -207,7 +208,7 @@ class Learner:
             b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, b_comm_mask, b_next_comm_mask, idxes, weights, old_ptr = data
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
             b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
-            # b_comm_mask, b_next_comm_mask = b_comm_mask.to(self.device), b_next_comm_mask.to(self.device)
+            b_comm_mask, b_next_comm_mask = b_comm_mask.to(self.device), b_next_comm_mask.to(self.device)
             if config.distributional:
                 raise NotImplementedError
                 # with torch.no_grad():

@@ -207,7 +207,7 @@ class LocalBuffer:
             next_pos = np.pad(next_pos, ((0,0), (0,step_pad), (0,0)))
             next_comm_mask = np.pad(next_comm_mask, ((0,step_pad), (0,0), (0,0)))
 
-        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, [bt_steps for _ in range(config.max_comm_agents)], [next_bt_steps for _ in range(config.max_comm_agents)], comm_mask, next_comm_mask
+        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps, comm_mask, next_comm_mask
 
     def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
 

@@ -54,14 +54,14 @@ class CommBlock(nn.Module):
     def forward(self, latent, comm_mask):
 
         # agent indices of agent that use communication
-        comm_idx = (comm_mask.sum(dim=-1) <= 1).nonzero(as_tuple=True)
+        comm_idx = (comm_mask.sum(dim=-1) > 1).nonzero(as_tuple=True)
         # no agent use communication, return
         if len(comm_idx[0]) == 0:
             return latent
 
         # print(comm_mask)
         attn_mask = comm_mask==False
-        if attn_mask.dim == 3:
+        if attn_mask.dim() == 3:
             attn_mask = attn_mask.repeat_interleave(config.num_comm_heads, 0)
         
 
@@ -71,12 +71,14 @@ class CommBlock(nn.Module):
             # print(latent.shape)
 
             info = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
+            # info = attn_layer(latent, latent, latent)[0]
             
             if len(comm_idx)==1:
                 batch_idx = torch.zeros(len(comm_idx[0]), dtype=torch.long)
                 latent[comm_idx[0], batch_idx] = self.update_cell(info[comm_idx[0], batch_idx], latent[comm_idx[0], batch_idx])
             else:
-                latent[comm_idx[0], comm_idx[1]] = self.update_cell(info[comm_idx[0], comm_idx[1]], latent[comm_idx[0], comm_idx[1]])
+                # print(comm_idx)
+                latent[comm_idx[1], comm_idx[0]] = self.update_cell(info[comm_idx[1], comm_idx[0]], latent[comm_idx[1], comm_idx[0]])
             # if torch.isnan(latent).any():
             #     print(attn_mask)
             #     print(identity_mask)
@@ -125,7 +127,7 @@ class Network(nn.Module):
         self.pos_encoder = nn.Sequential(
             nn.Linear(pos_dim, pos_latent_dim),
             nn.ReLU(True),
-            
+
             nn.Linear(pos_latent_dim, pos_latent_dim),
             nn.ReLU(True),
         )
@@ -220,7 +222,6 @@ class Network(nn.Module):
 
     def bootstrap(self, obs, pos, steps, comm_mask):
         # comm_mask size: batch_size x bt_steps x num_agents x num_agents
-
         obs = obs.view(-1, self.obs_dim, 9, 9)
         pos = pos.view(-1, self.pos_dim)
 
@@ -237,12 +238,16 @@ class Network(nn.Module):
 
         hidden_buffer = []
         hidden = self.recurrent(latent[0])
+        hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim).transpose(0, 1)
         hidden = self.comm(hidden, comm_mask[:, 0])
-        hidden_buffer.append(hidden)
+        hidden = hidden.transpose(0, 1).view(config.batch_size*config.num_agents, self.latent_dim)
+        hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
         for i in range(1, config.bt_steps):
             # hidden size: batch_size*num_agents x self.latent_dim
             hidden = self.recurrent(latent[i], hidden)
+            hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim).transpose(0, 1)
             hidden = self.comm(hidden, comm_mask[:, i])
+            hidden = hidden.transpose(0, 1).view(config.batch_size*config.num_agents, self.latent_dim)
             # only hidden from agent 0
             hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
 
