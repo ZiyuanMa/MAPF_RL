@@ -291,12 +291,12 @@ class LocalBuffer:
         #         selected_q = self.q_buf[:, 0][self.act_buf[:, 0]]
         #         max_q = np.max(self.q_buf[:, 0], axis=0)
 
-        relative_pos = np.abs(self.pos_buf[:, :, :2]-np.expand_dims(self.pos_buf[:, 0, :2], 1))
-        in_obs_mask = np.all(relative_pos<=config.obs_radius, axis=2)
-        relative_dis = np.squeeze(np.sqrt(relative_pos[:, :, 0]**2+relative_pos[:, :, 1]**2))
-        dis_mask = relative_dis.argsort() < config.max_comm_agents
+        relative_pos = np.abs(np.expand_dims(self.pos_buf[:, :, :2], 1)-np.expand_dims(self.pos_buf[:, :, :2], 2))
+        in_obs_mask = np.all(relative_pos<=config.obs_radius, axis=3)
+        relative_dis = np.sqrt(relative_pos[:, :, :, 0]**2+relative_pos[:, :, :, 1]**2)
+        dis_mask = np.zeros((self.size+1, self.num_agents, self.num_agents), dtype=np.bool)
+        dis_mask[relative_dis.argsort() < config.max_comm_agents] = True
 
         self.comm_mask = np.bitwise_and(in_obs_mask, dis_mask)
-        print(self.comm_mask.shape)
 
         delattr(self, 'q_buf')
