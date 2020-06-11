@@ -222,8 +222,8 @@ class Network(nn.Module):
 
     def bootstrap(self, obs, pos, steps, comm_mask):
         # comm_mask size: batch_size x bt_steps x num_agents x num_agents
-        obs = obs.view(-1, self.obs_dim, 9, 9)
-        pos = pos.view(-1, self.pos_dim)
+        obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
+        pos = pos.contiguous().view(-1, self.pos_dim)
 
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
