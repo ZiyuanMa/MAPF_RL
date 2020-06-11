@@ -150,6 +150,10 @@ class LocalBuffer:
     def __len__(self):
         return self.size
 
+    def make_writeable(self):
+        self.td_errors.flags.writeable = True
+
+
     def __getitem__(self, idx:int):
         assert idx < self.size
 

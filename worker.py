@@ -61,6 +61,7 @@ class GlobalBuffer:
     def add(self, buffer:LocalBuffer):
 
         with self.lock:
+            buffer.make_writeable()
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
             # update buffer size
             if self.buffer[self.ptr] is not None:
@@ -137,7 +138,8 @@ class GlobalBuffer:
     def update_priorities(self, idxes:np.ndarray, priorities:np.ndarray, old_ptr:int):
         """Update priorities of sampled transitions"""
         with self.lock:
-
+            idxes.flags.writeable = True
+            priorities.flags.writeable = True
             # discard the idx that already been discarded during training
             if self.ptr > old_ptr:
                 # range from [old_ptr, self.ptr)
