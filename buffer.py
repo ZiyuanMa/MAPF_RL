@@ -299,7 +299,7 @@ class LocalBuffer:
         in_obs_mask = np.all(relative_pos<=config.obs_radius, axis=3)
         relative_dis = np.sqrt(relative_pos[:, :, :, 0]**2+relative_pos[:, :, :, 1]**2)
         dis_mask = np.zeros((self.size+1, self.num_agents, self.num_agents), dtype=np.bool)
-        dis_mask[relative_dis.argsort() < config.max_comm_agents] = True
+        dis_mask[np.repeat(np.arange(self.size+1), self.num_agents*config.max_comm_agents), np.tile(np.arange(self.num_agents), (self.size+1)*config.max_comm_agents), relative_dis.argsort()[:,:,:config.max_comm_agents].flatten()] = True
 
         self.comm_mask = np.bitwise_and(in_obs_mask, dis_mask)
 
