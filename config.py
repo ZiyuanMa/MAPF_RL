@@ -2,7 +2,7 @@
 ####################    environment     ####################
 ############################################################
 map_length = 20
-num_agents = 4
+num_agents = 2
 obs_radius = 4
 reward_fn = dict(move=-0.075,
                 stay_on_goal=0,
@@ -26,7 +26,7 @@ learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 32
+bt_steps = 16
 load_model = None
 
 local_buffer_size = max_steps
