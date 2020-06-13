@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.functional import log_softmax
 from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
+
 import config
 
 class ResBlock(nn.Module):
@@ -41,6 +42,47 @@ class ResBlock(nn.Module):
         x = F.relu(x)
 
         return x
+
+        
+def ScaledDotProductAttention(Q, K, V, attn_mask):
+    dim_k = K.size(-1)
+    scores = torch.matmul(Q, K.transpose(-1, -2)) / (dim_k**0.5) # scores : [batch_size x n_heads x num_agents x num_agents]
+    scores.masked_fill_(attn_mask, -float('inf')) # Fills elements of self tensor with value where mask is one.
+    attn = F.softmax(scores, dim=-1)
+    context = torch.matmul(attn, V)
+    return context
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, input_dim, output_dim, num_heads):
+        super().__init__()
+        self.num_heads = num_heads
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.W_Q = nn.Linear(input_dim, output_dim * num_heads)
+        self.W_K = nn.Linear(input_dim, output_dim * num_heads)
+        self.W_V = nn.Linear(input_dim, output_dim * num_heads)
+        self.W_O = nn.Linear(output_dim * num_heads, output_dim)
+
+    def forward(self, input, attn_mask):
+        # input: [batch_size x num_agents x input_dim]
+        batch_size, num_agents, _ = input.size()
+
+        # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        q_s = self.W_Q(input).view(batch_size, num_agents, self.num_heads, -1).transpose(1,2)  # q_s: [batch_size x num_heads x num_agents x output_dim]
+        k_s = self.W_K(input).view(batch_size, num_agents, self.num_heads, -1).transpose(1,2)  # k_s: [batch_size x num_heads x num_agents x output_dim]
+        v_s = self.W_V(input).view(batch_size, num_agents, self.num_heads, -1).transpose(1,2)  # v_s: [batch_size x num_heads x num_agents x output_dim]
+
+        if attn_mask.dim() == 2:
+            attn_mask = attn_mask.unsqueeze(0)
+        attn_mask = attn_mask.unsqueeze(1).repeat_interleave(self.num_heads, 1) # attn_mask : [batch_size x num_heads x num_agents x num_agents]
+        assert attn_mask.size() == (batch_size, self.num_heads, num_agents, num_agents)
+
+        # context: [batch_size x num_heads x num_agents x output_dim]
+        context = ScaledDotProductAttention(q_s, k_s, v_s, attn_mask)
+        context = context.transpose(1, 2).contiguous().view(batch_size, num_agents, self.num_heads * self.output_dim) # context: [batch_size x len_q x n_heads * d_v]
+        output = self.W_O(context)
+        return output # output: [batch_size x num_agents x output_dim]
 
 class CommBlock(nn.Module):
     def __init__(self, embed_dim, num_heads=config.num_comm_heads, num_layers=config.num_comm_layers):

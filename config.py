@@ -21,12 +21,12 @@ pos_shape = (4,)
 # basic training setting
 save_interval=2000
 gamma=0.99
-batch_size=32
+batch_size=64
 learning_starts=10000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 32
+bt_steps = 16
 load_model = None
 
 local_buffer_size = max_steps
@@ -51,7 +51,7 @@ imitation_ratio = 0.2
 # dqn network setting
 cnn_channel = 64
 obs_dim = 2
-obs_latent_dim = 496
+obs_latent_dim = 240
 pos_dim = 4
 pos_latent_dim = 16
 
