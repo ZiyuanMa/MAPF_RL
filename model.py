@@ -43,15 +43,6 @@ class ResBlock(nn.Module):
 
         return x
 
-        
-def ScaledDotProductAttention(Q, K, V, attn_mask):
-    dim_k = K.size(-1)
-    scores = torch.matmul(Q, K.transpose(-1, -2)) / (dim_k**0.5) # scores : [batch_size x n_heads x num_agents x num_agents]
-    scores.masked_fill_(attn_mask, -float('inf')) # Fills elements of self tensor with value where mask is one.
-    attn = F.softmax(scores, dim=-1)
-    context = torch.matmul(attn, V)
-    return context
-
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, input_dim, output_dim, num_heads):
@@ -66,7 +57,9 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, input, attn_mask):
         # input: [batch_size x num_agents x input_dim]
-        batch_size, num_agents, _ = input.size()
+        batch_size, num_agents, input_dim = input.size()
+        assert input_dim == self.input_dim
+        
 
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q_s = self.W_Q(input).view(batch_size, num_agents, self.num_heads, -1).transpose(1,2)  # q_s: [batch_size x num_heads x num_agents x output_dim]
@@ -75,22 +68,26 @@ class MultiHeadAttention(nn.Module):
 
         if attn_mask.dim() == 2:
             attn_mask = attn_mask.unsqueeze(0)
+        assert attn_mask.size(0) == batch_size
         attn_mask = attn_mask.unsqueeze(1).repeat_interleave(self.num_heads, 1) # attn_mask : [batch_size x num_heads x num_agents x num_agents]
         assert attn_mask.size() == (batch_size, self.num_heads, num_agents, num_agents)
 
         # context: [batch_size x num_heads x num_agents x output_dim]
-        context = ScaledDotProductAttention(q_s, k_s, v_s, attn_mask)
+        scores = torch.matmul(q_s, k_s.transpose(-1, -2)) / (self.output_dim**0.5) # scores : [batch_size x n_heads x num_agents x num_agents]
+        scores.masked_fill_(attn_mask, -float('inf')) # Fills elements of self tensor with value where mask is one.
+        attn = F.softmax(scores, dim=-1)
+        context = torch.matmul(attn, v_s)
         context = context.transpose(1, 2).contiguous().view(batch_size, num_agents, self.num_heads * self.output_dim) # context: [batch_size x len_q x n_heads * d_v]
         output = self.W_O(context)
         return output # output: [batch_size x num_agents x output_dim]
 
 class CommBlock(nn.Module):
-    def __init__(self, embed_dim, num_heads=config.num_comm_heads, num_layers=config.num_comm_layers):
+    def __init__(self, input_dim, output_dim=64, num_heads=config.num_comm_heads, num_layers=config.num_comm_layers):
         super().__init__()
 
-        self.self_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim, num_heads) for _ in range(num_layers)])
+        self.self_attn = nn.ModuleList([MultiHeadAttention(input_dim, output_dim, num_heads) for _ in range(num_layers)])
 
-        self.update_cell = nn.GRUCell(embed_dim, embed_dim)
+        self.update_cell = nn.GRUCell(output_dim, input_dim)
 
 
     def forward(self, latent, comm_mask):
@@ -112,7 +109,7 @@ class CommBlock(nn.Module):
             # res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
             # print(latent.shape)
 
-            info = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
+            info = attn_layer(latent, attn_mask=attn_mask)[0]
             # info = attn_layer(latent, latent, latent)[0]
             
             if len(comm_idx)==1:
@@ -216,7 +213,7 @@ class Network(nn.Module):
         # if torch.isnan(self.hidden).any():
         #     raise RuntimeError(self.hidden)
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
-        self.hidden = self.hidden.unsqueeze(1)
+        self.hidden = self.hidden.unsqueeze(0)
 
         # print(self.hidden)
 
@@ -280,16 +277,16 @@ class Network(nn.Module):
 
         hidden_buffer = []
         hidden = self.recurrent(latent[0])
-        hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim).transpose(0, 1)
+        hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim)
         hidden = self.comm(hidden, comm_mask[:, 0])
-        hidden = hidden.transpose(0, 1).view(config.batch_size*config.num_agents, self.latent_dim)
+        hidden = hidden.view(config.batch_size*config.num_agents, self.latent_dim)
         hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
         for i in range(1, config.bt_steps):
             # hidden size: batch_size*num_agents x self.latent_dim
             hidden = self.recurrent(latent[i], hidden)
-            hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim).transpose(0, 1)
+            hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim)
             hidden = self.comm(hidden, comm_mask[:, i])
-            hidden = hidden.transpose(0, 1).view(config.batch_size*config.num_agents, self.latent_dim)
+            hidden = hidden.view(config.batch_size*config.num_agents, self.latent_dim)
             # only hidden from agent 0
             hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
 
