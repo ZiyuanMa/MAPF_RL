@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.functional import log_softmax
-from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 
 import config
 
@@ -116,9 +114,6 @@ class CommBlock(nn.Module):
         attn_mask = comm_mask==False
 
         for attn_layer in self.self_attn:
-            # print(latent.shape)
-            # res_latent = attn_layer(latent, latent, latent, attn_mask=attn_mask)[0]
-            # print(latent.shape)
 
             info = attn_layer(latent, attn_mask=attn_mask)
             # latent = attn_layer(latent, attn_mask=attn_mask)
@@ -129,23 +124,13 @@ class CommBlock(nn.Module):
                 # print(latent[batch_idx, comm_idx[0]].shape)
                 latent[batch_idx, comm_idx[0]] = self.update_cell(info[batch_idx, comm_idx[0]], latent[batch_idx, comm_idx[0]])
             else:
-
                 update_info = self.update_cell(info.view(-1, self.output_dim), latent.view(-1, self.input_dim)).view(config.batch_size, config.num_agents, self.input_dim)
                 # update_mask = update_mask.unsqueeze(2)
-
                 latent = torch.where(update_mask, update_info, latent)
-                # print()
                 # latent[comm_idx] = self.update_cell(info[comm_idx], latent[comm_idx])
                 # latent = self.update_cell(info, latent)
                 # print(latent.shape)
-            # if torch.isnan(latent).any():
-            #     print(attn_mask)
-            #     print(identity_mask)
-            #     print(latent)
-            #     raise Exception
 
-        # if torch.isnan(latent).any():
-        #     print(latent)
         return latent
 
 
@@ -256,8 +241,6 @@ class Network(nn.Module):
         # print(self.hidden)
         self.hidden = self.hidden.squeeze()
 
-        # if torch.isnan(self.hidden).any():
-        #     print(self.hidden)
 
         adv_val = self.adv(self.hidden)
         state_val = self.state(self.hidden)
@@ -288,9 +271,6 @@ class Network(nn.Module):
 
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
-
-        # latent = latent.split(steps)
-        # latent = pad_sequence(latent, batch_first=True)
 
         latent = latent.view(config.batch_size*config.num_agents, config.bt_steps, self.latent_dim).transpose(0, 1)
 
