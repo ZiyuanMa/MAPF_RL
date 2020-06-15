@@ -211,65 +211,69 @@ class Learner:
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
             b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
             b_comm_mask, b_next_comm_mask = b_comm_mask.to(self.device), b_next_comm_mask.to(self.device)
-            if config.distributional:
-                raise NotImplementedError
-                # with torch.no_grad():
-                #     b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps)
-                #     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
-                #     b_next_dist = b_next_dist[batch_idx, b_next_action, :]
+            with torch.autograd.set_detect_anomaly(True):
+                if config.distributional:
+                    raise NotImplementedError
+                    # with torch.no_grad():
+                    #     b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps)
+                    #     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
+                    #     b_next_dist = b_next_dist[batch_idx, b_next_action, :]
 
-                # b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps)
-                # b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
+                    # b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps)
+                    # b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
 
-                # b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
+                    # b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
 
-                
-                # # batch_size * N * 1
-                # b_dist = b_dist.unsqueeze(2)
-                # # batch_size * 1 * N
-                # b_target_dist = b_target_dist.unsqueeze(1)
+                    
+                    # # batch_size * N * 1
+                    # b_dist = b_dist.unsqueeze(2)
+                    # # batch_size * 1 * N
+                    # b_target_dist = b_target_dist.unsqueeze(1)
 
-                # td_errors = b_target_dist-b_dist
-                # priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
+                    # td_errors = b_target_dist-b_dist
+                    # priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
 
-            else:
-                with torch.no_grad():
-                    # choose max q index from next observation
-                    # double q-learning
-                    if config.double_q:
-                        b_action_ = self.model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).argmax(1, keepdim=True)
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).gather(1, b_action_)
-                    else:
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).max(1, keepdim=True)[0]
+                else:
 
-                b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_comm_mask).gather(1, b_action)
+                    with torch.no_grad():
+                        # choose max q index from next observation
+                        # double q-learning
+                        if config.double_q:
+                            b_action_ = self.model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).argmax(1, keepdim=True)
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).gather(1, b_action_)
+                        else:
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).max(1, keepdim=True)[0]
+                    
+                    
+                    b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_comm_mask).gather(1, b_action)
 
-                td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
+                    td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
-                priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
+                    priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
 
-                loss = (weights * self.huber_loss(td_error)).mean()
+                    loss = (weights * self.huber_loss(td_error)).mean()
 
-            self.optimizer.zero_grad()
+                    
+                self.optimizer.zero_grad()
 
-            loss.backward()
-            self.loss = loss.item()
-            # scaler.scale(loss).backward()
+                loss.backward()
+                self.loss = loss.item()
+                # scaler.scale(loss).backward()
 
-            nn.utils.clip_grad_norm_(self.model.parameters(), 40)
+                nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
-            self.optimizer.step()
-            # scaler.step(optimizer)
-            # scaler.update()
+                self.optimizer.step()
+                # scaler.step(optimizer)
+                # scaler.update()
 
-            self.scheduler.step()
+                self.scheduler.step()
 
-            # store new weights in shared memory
-            self.store_weights()
+                # store new weights in shared memory
+                self.store_weights()
 
-            self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
+                self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
 
-            self.counter += 1
+                self.counter += 1
 
             # update target net, save model
             if i % 2000 == 0:
