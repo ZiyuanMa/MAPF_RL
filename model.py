@@ -50,15 +50,10 @@ class MultiHeadAttention(nn.Module):
         self.num_heads = num_heads
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.W_Q = nn.Linear(input_dim, output_dim * num_heads, bias=False)
-        self.W_K = nn.Linear(input_dim, output_dim * num_heads, bias=False)
-        self.W_V = nn.Linear(input_dim, output_dim * num_heads, bias=False)
+        self.W_Q = nn.Linear(input_dim, output_dim * num_heads)
+        self.W_K = nn.Linear(input_dim, output_dim * num_heads)
+        self.W_V = nn.Linear(input_dim, output_dim * num_heads)
         self.W_O = nn.Linear(output_dim * num_heads, output_dim, bias=False)
-
-        for _, m in self.named_modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
-                # nn.init.constant_(m.bias, 0)
 
     def forward(self, input, attn_mask):
         # input: [batch_size x num_agents x input_dim]
@@ -112,7 +107,9 @@ class CommBlock(nn.Module):
         # no agent use communication, return
         if len(comm_idx[0]) == 0:
             return latent
-        if len(comm_idx)!=1:
+
+        
+        if len(comm_idx)>1:
             update_mask = update_mask.unsqueeze(2)
 
         # print(comm_mask)
@@ -135,9 +132,7 @@ class CommBlock(nn.Module):
 
                 update_info = self.update_cell(info.view(-1, self.output_dim), latent.view(-1, self.input_dim)).view(config.batch_size, config.num_agents, self.input_dim)
                 # update_mask = update_mask.unsqueeze(2)
-                # print(update_mask.shape)
-                # print(update_info.shape)
-                # print(latent.shape)
+
                 latent = torch.where(update_mask, update_info, latent)
                 # print()
                 # latent[comm_idx] = self.update_cell(info[comm_idx], latent[comm_idx])
@@ -238,12 +233,8 @@ class Network(nn.Module):
         else:
             self.hidden = self.recurrent(latent, self.hidden)
 
-        # if torch.isnan(self.hidden).any():
-        #     raise RuntimeError(self.hidden)
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
         self.hidden = self.hidden.unsqueeze(0)
-
-        # print(self.hidden)
 
         # masks for communication block
         agents_pos = pos[:, :2]
