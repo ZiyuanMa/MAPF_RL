@@ -107,7 +107,7 @@ class Network(nn.Module):
 
     @torch.no_grad()
     def step(self, obs, pos):
-        
+        # print(obs.shape)
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
@@ -118,7 +118,7 @@ class Network(nn.Module):
             _, self.hidden = self.recurrent(latent)
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
-        self.hidden = torch.squeeze(self.hidden)
+        self.hidden = torch.squeeze(self.hidden, dim=1)
 
         adv_val = self.adv(self.hidden)
         state_val = self.state(self.hidden)
@@ -134,6 +134,7 @@ class Network(nn.Module):
 
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+            # print(q_val.shape)
             actions = torch.argmax(q_val, 1).tolist()
 
         self.hidden = self.hidden.unsqueeze(0)

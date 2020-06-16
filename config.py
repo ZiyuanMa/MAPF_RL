@@ -1,6 +1,7 @@
 ############################################################
 ####################    environment     ####################
 ############################################################
+env_level = 0
 map_length = 20
 num_agents = 2
 obs_radius = 4
@@ -46,7 +47,7 @@ prioritized_replay_beta=0.4
 double_q = False
 
 # imitation learning
-imitation_ratio = 0.2
+imitation_ratio = 0.
 
 # dqn network setting
 cnn_channel = 64

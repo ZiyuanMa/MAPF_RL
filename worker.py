@@ -29,7 +29,9 @@ class GlobalBuffer:
         self.beta = beta
         self.counter = 0
         self.data = []
+        self.stat_dict = dict()
         self.lock = threading.Lock()
+        self.level = ray.put(config.env_level)
 
     def __len__(self):
         return self.size
@@ -59,6 +61,16 @@ class GlobalBuffer:
 
 
     def add(self, buffer:LocalBuffer):
+        if buffer.actor_id >= 4:
+            stat_key = (buffer.num_agents, buffer.map_len)
+            if stat_key in self.stat_dict:
+                if len(self.stat_dict[stat_key]) < 100:
+                    self.stat_dict[stat_key].append(buffer.done)
+                else:
+                    self.stat_dict[stat_key].pop(0)
+                    self.stat_dict[stat_key].append(buffer.done)
+            else:
+                self.stat_dict[stat_key] = [buffer.done]
 
         with self.lock:
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
@@ -77,8 +89,6 @@ class GlobalBuffer:
             self.ptr = (self.ptr+1) % self.capacity
 
     def sample_batch(self, batch_size:int) -> Tuple:
-        if len(self) < config.learning_starts:
-            raise Exception('buffer size is not large enough')
 
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
         idxes, priorities = [], []
@@ -151,13 +161,30 @@ class GlobalBuffer:
     def stats(self, interval:int):
         print('buffer update speed: {}/s'.format(self.counter/interval))
         print('buffer size: {}'.format(self.size))
+        level_up = True
+        for key, val in self.stat_dict.items():
+
+            print('{}: {}/{}'.format(key, sum(val), len(val)))
+            if len(val) < 100:
+                level_up = False
+            elif sum(val) < 10:
+                level_up = False
+        if level_up:
+            config.env_level += 1
+            self.level = ray.put(config.env_level)
+
+        print('current level: {}'.format(config.env_level))
         self.counter = 0
+
 
     def ready(self):
         if len(self) >= config.learning_starts:
             return True
         else:
             return False
+    
+    def get_level(self):
+        return self.level
 
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
@@ -310,7 +337,7 @@ class Actor:
         self.id = worker_id
         self.model = Network()
         self.model.eval()
-        self.env = Environment()
+        self.env = Environment(adaptive=True)
         self.epsilon = epsilon
         self.learner = learner
         self.global_buffer = buffer
@@ -389,7 +416,8 @@ class Actor:
     
     def reset(self):
         self.model.reset()
-        obs_pos = self.env.reset()
+        level_id = ray.get(self.global_buffer.get_level.remote())
+        obs_pos = self.env.reset(ray.get(level_id))
         # if use imitation learning
         imitation = True if random.random() < config.imitation_ratio else False
         if imitation:
@@ -398,12 +426,12 @@ class Actor:
                 obs_pos = self.env.reset()
                 imitation_actions = find_path(self.env)
 
-            local_buffer = LocalBuffer(obs_pos, True)
+            local_buffer = LocalBuffer(self.id, self.env.map_size[0], obs_pos, True)
 
             return obs_pos, local_buffer, imitation, imitation_actions
         else:
             
-            local_buffer = LocalBuffer(obs_pos, False)
+            local_buffer = LocalBuffer(self.id, self.env.map_size[0], obs_pos, False)
 
             return obs_pos, local_buffer, imitation, None
 

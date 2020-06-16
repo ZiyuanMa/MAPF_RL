@@ -36,9 +36,10 @@ if __name__ == '__main__':
     learner.run.remote()
     
     done = False
+    interval = 10
     while not done:
-        time.sleep(5)
+        time.sleep(interval)
         
-        done = ray.get(learner.stats.remote(5))
-        ray.get(buffer.stats.remote(5))
+        done = ray.get(learner.stats.remote(interval))
+        ray.get(buffer.stats.remote(interval))
         print()
