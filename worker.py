@@ -167,7 +167,7 @@ class GlobalBuffer:
             print('{}: {}/{}'.format(key, sum(val), len(val)))
             if len(val) < 100:
                 level_up = False
-            elif sum(val) < 10:
+            elif sum(val) < 80:
                 level_up = False
         if level_up:
             config.env_level += 1
