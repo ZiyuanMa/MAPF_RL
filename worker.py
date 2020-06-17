@@ -8,7 +8,7 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 from copy import deepcopy
-from typing import List,Tuple
+from typing import List, Tuple
 import threading
 
 import config
@@ -61,7 +61,7 @@ class GlobalBuffer:
 
 
     def add(self, buffer:LocalBuffer):
-        if buffer.actor_id >= 4:
+        if buffer.actor_id >= 10:
             stat_key = (buffer.num_agents, buffer.map_len)
             if stat_key in self.stat_dict:
                 if len(self.stat_dict[stat_key]) < 100:
