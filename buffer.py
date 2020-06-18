@@ -121,8 +121,8 @@ class SumTree:
 
 class LocalBuffer:
     __slots__ = ('num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'q_buf',
-                    'capacity', 'size', 'imitation', 'done', 'td_errors', 'comm_mask')
-    def __init__(self, init_obs_pos, imitation:bool, size=config.max_steps):
+                    'capacity', 'size', 'imitation', 'done', 'td_errors', 'comm_mask', 'actor_id', 'map_len')
+    def __init__(self, actor_id, map_len, init_obs_pos, imitation:bool, size=config.max_steps):
         """
         Prioritized Replay buffer for each actor
         """

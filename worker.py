@@ -162,11 +162,7 @@ class GlobalBuffer:
                 idxes = idxes[mask]
                 priorities = priorities[mask]
 
-<<<<<<< HEAD
             self.priority_tree.batch_update(idxes, priorities**self.alpha)
-=======
-            self.priority_tree.batch_update(np.copy(idxes), np.copy(priorities)**self.alpha)
->>>>>>> adaptive_env
 
     def stats(self, interval:int):
         print('buffer update speed: {}/s'.format(self.counter/interval))
@@ -180,7 +176,7 @@ class GlobalBuffer:
                 if add_agent_key[0] <= config.max_num_agetns and add_agent_key not in self.stat_dict:
                     self.stat_dict[add_agent_key] = []
                 
-                add_map_key = (key[0], key[1]+10) 
+                add_map_key = (key[0], key[1]+5) 
                 if add_map_key[1] <= config.max_map_lenght and add_map_key not in self.stat_dict:
                     self.stat_dict[add_map_key] = []
 
