@@ -170,9 +170,11 @@ class GlobalBuffer:
                 if add_agent_key[0] <= config.max_num_agetns and add_agent_key not in self.stat_dict:
                     self.stat_dict[add_agent_key] = []
                 
-                add_map_key = (key[0], key[1]+10) 
+                add_map_key = (key[0], key[1]+5) 
                 if add_map_key[1] <= config.max_map_lenght and add_map_key not in self.stat_dict:
                     self.stat_dict[add_map_key] = []
+                
+                del self.stat_dict[key]
 
         self.level = ray.put(list(self.stat_dict.keys()))
 
