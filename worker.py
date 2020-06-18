@@ -164,14 +164,14 @@ class GlobalBuffer:
 
         for key, val in self.stat_dict.copy().items():
             print('{}: {}/{}'.format(key, sum(val), len(val)))
-            if len(val) == 200 and sum(val) >= 160:
+            if len(val) == 200 and sum(val) >= 200*config.pass_rate:
                 # add number of agents
                 add_agent_key = (key[0]+1, key[1]) 
-                if add_agent_key[0] <= 16 and add_agent_key not in self.stat_dict:
+                if add_agent_key[0] <= config.max_num_agetns and add_agent_key not in self.stat_dict:
                     self.stat_dict[add_agent_key] = []
                 
                 add_map_key = (key[0], key[1]+10) 
-                if add_map_key[1] <= 70 and add_map_key not in self.stat_dict:
+                if add_map_key[1] <= config.max_map_lenght and add_map_key not in self.stat_dict:
                     self.stat_dict[add_map_key] = []
 
         self.level = ray.put(list(self.stat_dict.keys()))
@@ -195,7 +195,7 @@ class Learner:
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[4000, 70000, 85000], gamma=0.5)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, 80000, 90000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0

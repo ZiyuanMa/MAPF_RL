@@ -46,6 +46,11 @@ prioritized_replay_beta=0.4
 # use double q learning
 double_q = False
 
+# adaptive learning
+max_map_lenght = 70
+max_num_agetns = 16
+pass_rate = 0.8
+
 # dqn network setting
 cnn_channel = 64
 obs_dim = 2
