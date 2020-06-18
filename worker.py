@@ -69,7 +69,7 @@ class GlobalBuffer:
             self.size += len(buffer)
             self.counter += len(buffer)
 
-            self.priority_tree.batch_update(np.copy(idxes), np.copy(buffer.td_errors)**self.alpha)
+            self.priority_tree.batch_update(idxes, buffer.td_errors**self.alpha)
 
             delattr(buffer, 'td_errors')
 
