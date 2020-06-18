@@ -68,9 +68,7 @@ class GlobalBuffer:
                 else:
                     self.stat_dict[stat_key].pop(0)
                     self.stat_dict[stat_key].append(buffer.done)
-            else:
-                print(stat_key)
-                raise AssertionError
+
 
         with self.lock:
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
@@ -197,7 +195,7 @@ class Learner:
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, 80000, 90000], gamma=0.5)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, 90000, 100000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
@@ -225,7 +223,7 @@ class Learner:
 
     def train(self):
         batch_idx = torch.arange(config.batch_size)
-        for i in range(1, 100001):
+        for i in range(1, 110001):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
