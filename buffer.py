@@ -178,9 +178,9 @@ class LocalBuffer:
         bt_steps = min(idx+1, config.bt_steps)
         # obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
         # pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
-        obs = self.obs_buf[idx+1-bt_steps:idx+1].swapaxes(0,1)
-        pos = self.pos_buf[idx+1-bt_steps:idx+1].swapaxes(0,1)
-        comm_mask = self.comm_mask[idx+1-bt_steps:idx+1]
+        obs = self.obs_buf[idx+1-bt_steps:idx+2].swapaxes(0,1)
+        pos = self.pos_buf[idx+1-bt_steps:idx+2].swapaxes(0,1)
+        comm_mask = self.comm_mask[idx+1-bt_steps:idx+2]
 
         # if len(adj_list)==1:
         #     obs = np.expand_dims(obs, 1)
@@ -196,25 +196,7 @@ class LocalBuffer:
             pos = np.pad(pos, ((0,0), (0,step_pad), (0,0)))
             comm_mask = np.pad(comm_mask, ((0,step_pad), (0,0), (0,0)))
 
-        # next obs and next pos
-        next_bt_steps = min(idx+1+forward, config.bt_steps)
-        # next_obs = np.swapaxes(self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
-        # next_pos = np.swapaxes(self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
-        next_obs = self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward].swapaxes(0,1)
-        next_pos = self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward].swapaxes(0,1)
-        next_comm_mask = self.comm_mask[idx+1+forward-next_bt_steps:idx+1+forward]
-
-        # if len(next_adj_list)==1:
-        #     next_obs = np.expand_dims(next_obs, 1)
-        #     next_pos = np.expand_dims(next_pos, 1)
-
-        if next_bt_steps < config.bt_steps:
-            step_pad = config.bt_steps-next_bt_steps
-            next_obs = np.pad(next_obs, ((0,0), (0,step_pad), (0,0), (0,0), (0,0)))
-            next_pos = np.pad(next_pos, ((0,0), (0,step_pad), (0,0)))
-            next_comm_mask = np.pad(next_comm_mask, ((0,step_pad), (0,0), (0,0)))
-
-        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps, comm_mask, next_comm_mask
+        return obs, pos, self.act_buf[idx, 0], reward, done, forward, bt_steps, comm_mask
 
     def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
 

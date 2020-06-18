@@ -95,6 +95,7 @@ class CommBlock(nn.Module):
 
 
     def forward(self, latent, comm_mask):
+        num_agents = latent.size(1)
 
         # agent indices of agent that use communication
         update_mask = comm_mask.sum(dim=-1) > 1
@@ -104,7 +105,6 @@ class CommBlock(nn.Module):
         # no agent use communication, return
         if len(comm_idx[0]) == 0:
             return latent
-
         
         if len(comm_idx)>1:
             update_mask = update_mask.unsqueeze(2)
@@ -123,7 +123,7 @@ class CommBlock(nn.Module):
                 # print(latent[batch_idx, comm_idx[0]].shape)
                 latent[batch_idx, comm_idx[0]] = self.update_cell(info[batch_idx, comm_idx[0]], latent[batch_idx, comm_idx[0]])
             else:
-                update_info = self.update_cell(info.view(-1, self.output_dim), latent.view(-1, self.input_dim)).view(config.batch_size, config.num_agents, self.input_dim)
+                update_info = self.update_cell(info.view(-1, self.output_dim), latent.view(-1, self.input_dim)).view(config.batch_size, num_agents, self.input_dim)
                 # update_mask = update_mask.unsqueeze(2)
                 latent = torch.where(update_mask, update_info, latent)
                 # latent[comm_idx] = self.update_cell(info[comm_idx], latent[comm_idx])

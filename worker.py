@@ -4,6 +4,8 @@ import random
 import os
 import torch
 import torch.nn as nn
+import torch.backends.cudnn as cudnn
+cudnn.benchmark=True
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
@@ -28,9 +30,9 @@ class GlobalBuffer:
         self.beta = beta
         self.counter = 0
         self.data = []
-        self.stat_dict = {(1, 10):[]}
+        self.stat_dict = {(3, 10):[]}
         self.lock = threading.Lock()
-        self.level = ray.put([(1, 10)])
+        self.level = ray.put([(3, 10)])
 
     def __len__(self):
         return self.size
@@ -89,7 +91,7 @@ class GlobalBuffer:
 
     def sample_batch(self, batch_size:int) -> Tuple:
 
-        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, b_comm_mask, b_next_comm_mask = [], [], [], [], [], [], [], [], [], [], [], []
+        b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_comm_mask = [], [], [], [], [], [], [], []
         idxes, priorities = [], []
 
         with self.lock:
@@ -97,12 +99,12 @@ class GlobalBuffer:
             idxes, priorities = self.priority_tree.batch_sample(batch_size)
             global_idxes = idxes // config.local_buffer_size
             local_idxes = idxes % config.local_buffer_size
-            max_num_agents = 0
+            max_num_agents = 1
 
             for global_idx, local_idx in zip(global_idxes, local_idxes):
 
                 ret = self.buffer[global_idx][local_idx]
-                obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps, comm_mask, next_comm_mask = ret   
+                obs, pos, action, reward, done, steps, bt_steps, comm_mask = ret   
 
                 if max_num_agents < obs.shape[0]:
                     max_num_agents = obs.shape[0]
@@ -111,44 +113,36 @@ class GlobalBuffer:
                 b_pos.append(pos)
                 b_action.append(action)
                 b_reward.append(reward)
-                b_next_obs.append(next_obs)
-                b_next_pos.append(next_pos)
 
                 b_done.append(done)
                 b_steps.append(steps)
                 b_bt_steps.append(bt_steps)
-                b_next_bt_steps.append(next_bt_steps)
                 b_comm_mask.append(comm_mask)
-                b_next_comm_mask.append(next_comm_mask)
 
             # importance sampling weights
             min_p = np.min(priorities)
             weights = np.power(priorities/min_p, -self.beta)
 
-            for obs, pos, next_obs, next_pos, comm_mask, next_comm_mask in zip(b_obs, b_pos, b_next_obs, b_next_pos, b_comm_mask, b_next_comm_mask):
-                if max_num_agents > obs.shape[0]:
-                    agent_pad = max_num_agents-obs.shape[0]
-                    obs = np.pad(obs, ((0,agent_pad), (0,0), (0,0), (0,0), (0,0)))
-                    pos = np.pad(pos, ((0,agent_pad), (0,0), (0,0)))
-                    comm_mask = np.pad(comm_mask, ((0,0), (0,agent_pad), (0,agent_pad)))
-                    next_obs = np.pad(next_obs, ((0,agent_pad), (0,0), (0,0), (0,0), (0,0)))
-                    next_pos = np.pad(next_pos, ((0,agent_pad), (0,0), (0,0)))
-                    next_comm_mask = np.pad(next_comm_mask, ((0,0), (0,agent_pad), (0,agent_pad)))
+            for i in range(config.batch_size):
+                if max_num_agents > b_obs[i].shape[0]:
+                    agent_pad = max_num_agents-b_obs[i].shape[0]
+                    b_obs[i] = np.pad(b_obs[i], ((0,agent_pad), (0,0), (0,0), (0,0), (0,0)))
+                    b_pos[i] = np.pad(b_pos[i], ((0,agent_pad), (0,0), (0,0)))
+                    b_comm_mask[i] = np.pad(b_comm_mask[i], ((0,0), (0,agent_pad), (0,agent_pad)))
+
+            # if max_num_agents > 1:
+            #     torch.cuda.empty_cache()
 
             data = (
                 torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
                 torch.from_numpy(np.concatenate(b_pos).astype(np.float32)),
                 torch.LongTensor(b_action).unsqueeze(1),
                 torch.FloatTensor(b_reward).unsqueeze(1),
-                torch.from_numpy(np.concatenate(b_next_obs).astype(np.float32)),
-                torch.from_numpy(np.concatenate(b_next_pos).astype(np.float32)),
 
                 torch.FloatTensor(b_done).unsqueeze(1),
                 torch.FloatTensor(b_steps).unsqueeze(1),
                 torch.LongTensor(b_bt_steps),
-                torch.LongTensor(b_next_bt_steps),
                 torch.from_numpy(np.stack(b_comm_mask)),
-                torch.from_numpy(np.stack(b_next_comm_mask)),
 
                 idxes,
                 torch.from_numpy(weights).unsqueeze(1),
@@ -247,10 +241,10 @@ class Learner:
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
  
-            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, b_comm_mask, b_next_comm_mask, idxes, weights, old_ptr = data
+            b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_comm_mask, idxes, weights, old_ptr = data
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
-            b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
-            b_comm_mask, b_next_comm_mask = b_comm_mask.to(self.device), b_next_comm_mask.to(self.device)
+            b_done, b_steps, weights =  b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
+            b_comm_mask = b_comm_mask.to(self.device)
             with torch.autograd.set_detect_anomaly(True):
                 if config.distributional:
                     raise NotImplementedError
@@ -278,14 +272,15 @@ class Learner:
                     with torch.no_grad():
                         # choose max q index from next observation
                         # double q-learning
+                        b_next_bt_steps = torch.where(b_bt_steps<config.bt_steps, b_bt_steps+1, b_bt_steps)
                         if config.double_q:
-                            b_action_ = self.model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).argmax(1, keepdim=True)
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).gather(1, b_action_)
+                            b_action_ = self.model.bootstrap(b_obs[:,1:], b_pos[:,1:], b_next_bt_steps, b_comm_mask[:, 1:]).argmax(1, keepdim=True)
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs[:,1:], b_pos[:,1:], b_next_bt_steps, b_comm_mask[:, 1:]).gather(1, b_action_)
                         else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_comm_mask).max(1, keepdim=True)[0]
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs[:,1:], b_pos[:,1:], b_next_bt_steps, b_comm_mask[:, 1:]).max(1, keepdim=True)[0]
                     
                     
-                    b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_comm_mask).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:,:-1], b_pos[:,:-1], b_bt_steps, b_comm_mask[:, :-1]).gather(1, b_action)
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
