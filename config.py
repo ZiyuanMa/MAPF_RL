@@ -1,6 +1,7 @@
 ############################################################
 ####################    environment     ####################
 ############################################################
+env_level = 0
 map_length = 20
 num_agents = 6
 obs_radius = 4
@@ -26,7 +27,7 @@ learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 16
+bt_steps = 32
 load_model = None
 
 local_buffer_size = max_steps
@@ -45,8 +46,10 @@ prioritized_replay_beta=0.4
 # use double q learning
 double_q = False
 
-# imitation learning
-imitation_ratio = 0.2
+# adaptive learning
+max_map_lenght = 70
+max_num_agetns = 16
+pass_rate = 0.8
 
 # dqn network setting
 cnn_channel = 64

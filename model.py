@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import config
 
 class ResBlock(nn.Module):
@@ -161,12 +160,12 @@ class Network(nn.Module):
 
             ResBlock(cnn_channel*2, type='cnn'),
 
-            nn.Conv2d(cnn_channel*2, 8, 1, 1),
+            nn.Conv2d(cnn_channel*2, 4, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
 
-            nn.Linear(8*9*9, obs_latent_dim),
+            nn.Linear(4*9*9, obs_latent_dim),
             nn.ReLU(True),
         )
 
@@ -207,7 +206,7 @@ class Network(nn.Module):
 
     @torch.no_grad()
     def step(self, obs, pos):
-        
+        # print(obs.shape)
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
@@ -254,6 +253,7 @@ class Network(nn.Module):
             actions = q_val.mean(2).argmax(1).tolist()
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+            # print(q_val.shape)
             actions = torch.argmax(q_val, 1).tolist()
 
         return actions, q_val

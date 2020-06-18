@@ -86,6 +86,7 @@ class SumTree:
         priorities = self.tree[idxes]
         idxes -= self.capacity-1
 
+        assert np.all(priorities>0)
         assert np.all(idxes>=0) and np.all(idxes<self.capacity)
 
         return idxes, priorities
@@ -126,7 +127,9 @@ class LocalBuffer:
         Prioritized Replay buffer for each actor
         """
 
+        self.actor_id = actor_id
         self.num_agents = init_obs_pos[0].shape[0]
+        self.map_len = map_len
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
         self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)

@@ -72,7 +72,7 @@ def map_partition(map):
 
 
 class Environment:
-    def __init__(self, map_length:Union[int,list]=config.map_length, num_agents:Union[int,list,tuple]=config.num_agents,
+    def __init__(self, adaptive=False, map_size:int=config.map_length, num_agents:int=config.num_agents,
                 obs_radius:int=config.obs_radius, reward_fn:dict=config.reward_fn):
         '''
         self.map_length:
@@ -88,21 +88,16 @@ class Environment:
             (x, y)              randomly choose one from range x to y every time reset environment
             [x1, x2, ... xn]    randomly choose one from x1 to xn every time reset environment
         '''
-
-        self.num_agents_range = num_agents
-        if isinstance(num_agents, int):
+        self.adaptive = adaptive
+        if adaptive:
+            self.level = config.env_level
+            rand = random.randint(0, self.level)
+            self.num_agents = rand//3+1
+            self.map_size = (10+rand%3*30, 10+rand%3*30)
+        else:
             self.num_agents = num_agents
-        elif isinstance(num_agents, tuple):
-            self.num_agents = random.randint(*num_agents)
-        elif isinstance(num_agents, list):
-            self.num_agents = random.choice(num_agents)
+            self.map_size = map_size
 
-        self.map_length = map_length
-        if isinstance(map_length, int):
-            self.map_size = (map_length, map_length)
-        elif isinstance(map_length, list):
-            length = random.choice(map_length)
-            self.map_size = (length, length)
 
         # set as same as in PRIMAL
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
@@ -158,16 +153,14 @@ class Environment:
 
         # self.history = [np.copy(self.agents_pos)]
 
-    def reset(self):
+    def reset(self, level=None):
 
-        if isinstance(self.num_agents_range, tuple):
-            self.num_agents = random.randint(*self.num_agents_range)
-        elif isinstance(self.num_agents_range, list):
-            self.num_agents = random.choice(self.num_agents_range)
+        if self.adaptive:
+            
+            rand = random.choice(level)
+            self.num_agents = rand[0]
+            self.map_size = (rand[1], rand[1])
 
-        if isinstance(self.map_length, list):
-            length = random.choice(self.map_length)
-            self.map_size = (length, length)
 
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)
@@ -252,7 +245,6 @@ class Environment:
         rewards = []
         next_pos = np.copy(self.agents_pos)
 
-
         # remove unmoving agent id
         for agent_id in checking_list.copy():
             if actions[agent_id] == 0:
@@ -266,9 +258,7 @@ class Environment:
                 checking_list.remove(agent_id)
             else:
                 # move
-                action_direc = action_list[actions[agent_id]]
-                next_pos[agent_id] += action_direc
-
+                next_pos[agent_id] += action_list[actions[agent_id]]
                 rewards.append(self.reward_fn['move'])
 
         # assert len(rewards)==len(actions), '{}, {}'.format(len(rewards), len(actions))

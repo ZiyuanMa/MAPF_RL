@@ -8,14 +8,13 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 from copy import deepcopy
-from typing import List,Tuple
+from typing import List, Tuple
 import threading
 
 import config
 from model import Network
 from environment import Environment
 from buffer import SumTree, LocalBuffer
-from search import find_path
 
 @ray.remote(num_cpus=1)
 class GlobalBuffer:
@@ -29,7 +28,9 @@ class GlobalBuffer:
         self.beta = beta
         self.counter = 0
         self.data = []
+        self.stat_dict = {(1, 10):[]}
         self.lock = threading.Lock()
+        self.level = ray.put([(1, 10)])
 
     def __len__(self):
         return self.size
@@ -40,12 +41,12 @@ class GlobalBuffer:
 
     def prepare_data(self):
         while True:
-            if len(self.data) < 4:
+            if len(self.data) <= 2:
                 data = self.sample_batch(config.batch_size)
                 data_id = ray.put(data)
                 self.data.append(data_id)
             else:
-                time.sleep(0.5)
+                time.sleep(0.2)
     
     def get_data(self):
 
@@ -59,6 +60,17 @@ class GlobalBuffer:
 
 
     def add(self, buffer:LocalBuffer):
+        if buffer.actor_id >= 10:
+            stat_key = (buffer.num_agents, buffer.map_len)
+            if stat_key in self.stat_dict:
+                if len(self.stat_dict[stat_key]) < 200:
+                    self.stat_dict[stat_key].append(buffer.done)
+                else:
+                    self.stat_dict[stat_key].pop(0)
+                    self.stat_dict[stat_key].append(buffer.done)
+            else:
+                print(stat_key)
+                raise AssertionError
 
         with self.lock:
             buffer.make_writeable()
@@ -69,7 +81,7 @@ class GlobalBuffer:
             self.size += len(buffer)
             self.counter += len(buffer)
 
-            self.priority_tree.batch_update(idxes, buffer.td_errors**self.alpha)
+            self.priority_tree.batch_update(idxes, np.copy(buffer.td_errors)**self.alpha)
 
             delattr(buffer, 'td_errors')
 
@@ -78,8 +90,6 @@ class GlobalBuffer:
             self.ptr = (self.ptr+1) % self.capacity
 
     def sample_batch(self, batch_size:int) -> Tuple:
-        if len(self) < config.learning_starts:
-            raise Exception('buffer size is not large enough')
 
         b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, b_comm_mask, b_next_comm_mask = [], [], [], [], [], [], [], [], [], [], [], []
         idxes, priorities = [], []
@@ -152,11 +162,30 @@ class GlobalBuffer:
                 idxes = idxes[mask]
                 priorities = priorities[mask]
 
+<<<<<<< HEAD
             self.priority_tree.batch_update(idxes, priorities**self.alpha)
+=======
+            self.priority_tree.batch_update(np.copy(idxes), np.copy(priorities)**self.alpha)
+>>>>>>> adaptive_env
 
     def stats(self, interval:int):
         print('buffer update speed: {}/s'.format(self.counter/interval))
         print('buffer size: {}'.format(self.size))
+
+        for key, val in self.stat_dict.copy().items():
+            print('{}: {}/{}'.format(key, sum(val), len(val)))
+            if len(val) == 200 and sum(val) >= 200*config.pass_rate:
+                # add number of agents
+                add_agent_key = (key[0]+1, key[1]) 
+                if add_agent_key[0] <= config.max_num_agetns and add_agent_key not in self.stat_dict:
+                    self.stat_dict[add_agent_key] = []
+                
+                add_map_key = (key[0], key[1]+10) 
+                if add_map_key[1] <= config.max_map_lenght and add_map_key not in self.stat_dict:
+                    self.stat_dict[add_map_key] = []
+
+        self.level = ray.put(list(self.stat_dict.keys()))
+
         self.counter = 0
 
     def ready(self):
@@ -164,6 +193,9 @@ class GlobalBuffer:
             return True
         else:
             return False
+    
+    def get_level(self):
+        return self.level
 
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
@@ -174,7 +206,7 @@ class Learner:
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[4000, 60000, 70000], gamma=0.5)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, 80000, 90000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
@@ -322,7 +354,7 @@ class Actor:
         self.id = worker_id
         self.model = Network()
         self.model.eval()
-        self.env = Environment()
+        self.env = Environment(adaptive=True)
         self.epsilon = epsilon
         self.learner = learner
         self.global_buffer = buffer
@@ -332,31 +364,23 @@ class Actor:
         """ Generate training batch sample """
         done = False
 
-        obs_pos, local_buffer, imitation, imitation_actions = self.reset()
+        obs_pos, local_buffer = self.reset()
 
         while True:
 
-            if imitation:
+            # sample action
+            # Note: q_val is quantile values if it's distributional
+            actions, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
-                actions = imitation_actions.pop(0)
-
-                _, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
-
-            else:
-                # sample action
-                # Note: q_val is quantile values if it's distributional
-                actions, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
-
-                if random.random() < self.epsilon:
-                    # Note: only one agent can do random action in order to make the whole environment more stable
-                    actions[0] = np.random.randint(0, 5)
+            if random.random() < self.epsilon:
+                # Note: only one agent can do random action in order to make the whole environment more stable
+                actions[0] = np.random.randint(0, 5)
 
             # take action in env
             next_obs_pos, r, done, _ = self.env.step(actions)
 
             # return data and update observation
             local_buffer.add(q_val.numpy(), actions, r, next_obs_pos)
-
 
             if done == False and self.env.steps < self.max_steps:
 
@@ -390,7 +414,7 @@ class Actor:
                 # else:
                 #     local_buffer = LocalBuffer(obs_pos, False)
 
-                obs_pos, local_buffer, imitation, imitation_actions = self.reset()
+                obs_pos, local_buffer = self.reset()
 
     def update_weights(self):
         '''load weights from learner'''
@@ -401,21 +425,10 @@ class Actor:
     
     def reset(self):
         self.model.reset()
-        obs_pos = self.env.reset()
-        # if use imitation learning
-        imitation = True if random.random() < config.imitation_ratio else False
-        if imitation:
-            imitation_actions = find_path(self.env)
-            while imitation_actions is None:
-                obs_pos = self.env.reset()
-                imitation_actions = find_path(self.env)
+        level_id = ray.get(self.global_buffer.get_level.remote())
+        obs_pos = self.env.reset(ray.get(level_id))
+        
+        local_buffer = LocalBuffer(self.id, self.env.map_size[0], obs_pos, False)
 
-            local_buffer = LocalBuffer(obs_pos, True)
-
-            return obs_pos, local_buffer, imitation, imitation_actions
-        else:
-            
-            local_buffer = LocalBuffer(obs_pos, False)
-
-            return obs_pos, local_buffer, imitation, None
+        return obs_pos, local_buffer
 
