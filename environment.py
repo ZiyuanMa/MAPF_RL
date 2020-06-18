@@ -156,15 +156,11 @@ class Environment:
     def reset(self, level=None):
 
         if self.adaptive:
-            self.level = level
-            rand = random.randint(0, self.level)
-            self.num_agents = rand//3+1
-            if self.num_agents > 16:
-                self.map_size = (70, 70)
-            elif self.num_agents > 4:
-                self.map_size = (40+rand%2*30, 40+rand%2*30)
-            else:
-                self.map_size = (10+rand%3*30, 10+rand%3*30)
+            
+            rand = random.choice(level)
+            self.num_agents = rand[0]
+            self.map_size = (rand[1], rand[1])
+
 
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)

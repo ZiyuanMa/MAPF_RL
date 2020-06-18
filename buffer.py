@@ -86,6 +86,7 @@ class SumTree:
         priorities = self.tree[idxes]
         idxes -= self.capacity-1
 
+        assert np.all(priorities>0)
         assert np.all(idxes>=0) and np.all(idxes<self.capacity)
 
         return idxes, priorities

@@ -79,13 +79,10 @@ class Network(nn.Module):
         self.pos_encoder = nn.Sequential(
             nn.Linear(pos_dim, pos_latent_dim),
             nn.ReLU(True),
-            # ResBlock(pos_latent_dim),
+            ResBlock(pos_latent_dim),
         )
 
-        self.concat_encoder = nn.Sequential(
-
-            ResBlock(self.latent_dim),
-        )
+        self.concat_encoder = ResBlock(self.latent_dim)
 
         self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
 
@@ -117,7 +114,7 @@ class Network(nn.Module):
             _, self.hidden = self.recurrent(latent)
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
-        self.hidden = torch.squeeze(self.hidden, dim=1)
+        self.hidden = torch.squeeze(self.hidden, dim=0)
 
         adv_val = self.adv(self.hidden)
         state_val = self.state(self.hidden)

@@ -15,7 +15,6 @@ import config
 from model import Network
 from environment import Environment
 from buffer import SumTree, LocalBuffer
-from search import find_path
 
 @ray.remote(num_cpus=1)
 class GlobalBuffer:
@@ -29,9 +28,9 @@ class GlobalBuffer:
         self.beta = beta
         self.counter = 0
         self.data = []
-        self.stat_dict = dict()
+        self.stat_dict = {(1, 10):[]}
         self.lock = threading.Lock()
-        self.level = ray.put(config.env_level)
+        self.level = ray.put([(1, 10)])
 
     def __len__(self):
         return self.size
@@ -64,13 +63,14 @@ class GlobalBuffer:
         if buffer.actor_id >= 10:
             stat_key = (buffer.num_agents, buffer.map_len)
             if stat_key in self.stat_dict:
-                if len(self.stat_dict[stat_key]) < 100:
+                if len(self.stat_dict[stat_key]) < 200:
                     self.stat_dict[stat_key].append(buffer.done)
                 else:
                     self.stat_dict[stat_key].pop(0)
                     self.stat_dict[stat_key].append(buffer.done)
             else:
-                self.stat_dict[stat_key] = [buffer.done]
+                print(stat_key)
+                raise AssertionError
 
         with self.lock:
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
@@ -80,7 +80,7 @@ class GlobalBuffer:
             self.size += len(buffer)
             self.counter += len(buffer)
 
-            self.priority_tree.batch_update(idxes, buffer.td_errors**self.alpha)
+            self.priority_tree.batch_update(idxes, np.copy(buffer.td_errors)**self.alpha)
 
             delattr(buffer, 'td_errors')
 
@@ -156,26 +156,27 @@ class GlobalBuffer:
                 idxes = idxes[mask]
                 priorities = priorities[mask]
 
-            self.priority_tree.batch_update(idxes, priorities)
+            self.priority_tree.batch_update(np.copy(idxes), np.copy(priorities)**self.alpha)
 
     def stats(self, interval:int):
         print('buffer update speed: {}/s'.format(self.counter/interval))
         print('buffer size: {}'.format(self.size))
-        level_up = True
-        for key, val in self.stat_dict.items():
 
+        for key, val in self.stat_dict.copy().items():
             print('{}: {}/{}'.format(key, sum(val), len(val)))
-            if len(val) < 100:
-                level_up = False
-            elif sum(val) < 80:
-                level_up = False
-        if level_up:
-            config.env_level += 1
-            self.level = ray.put(config.env_level)
+            if len(val) == 200 and sum(val) >= 160:
+                # add number of agents
+                add_agent_key = (key[0]+1, key[1]) 
+                if add_agent_key[0] <= 16 and add_agent_key not in self.stat_dict:
+                    self.stat_dict[add_agent_key] = []
+                
+                add_map_key = (key[0], key[1]+10) 
+                if add_map_key[1] <= 70 and add_map_key not in self.stat_dict:
+                    self.stat_dict[add_map_key] = []
 
-        print('current level: {}'.format(config.env_level))
+        self.level = ray.put(list(self.stat_dict.keys()))
+
         self.counter = 0
-
 
     def ready(self):
         if len(self) >= config.learning_starts:
@@ -347,31 +348,23 @@ class Actor:
         """ Generate training batch sample """
         done = False
 
-        obs_pos, local_buffer, imitation, imitation_actions = self.reset()
+        obs_pos, local_buffer = self.reset()
 
         while True:
 
-            if imitation:
+            # sample action
+            # Note: q_val is quantile values if it's distributional
+            actions, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
-                actions = imitation_actions.pop(0)
-
-                _, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
-
-            else:
-                # sample action
-                # Note: q_val is quantile values if it's distributional
-                actions, q_val = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
-
-                if random.random() < self.epsilon:
-                    # Note: only one agent can do random action in order to make the whole environment more stable
-                    actions[0] = np.random.randint(0, 5)
+            if random.random() < self.epsilon:
+                # Note: only one agent can do random action in order to make the whole environment more stable
+                actions[0] = np.random.randint(0, 5)
 
             # take action in env
             next_obs_pos, r, done, _ = self.env.step(actions)
 
             # return data and update observation
             local_buffer.add(q_val.numpy(), actions, r, next_obs_pos)
-
 
             if done == False and self.env.steps < self.max_steps:
 
@@ -405,7 +398,7 @@ class Actor:
                 # else:
                 #     local_buffer = LocalBuffer(obs_pos, False)
 
-                obs_pos, local_buffer, imitation, imitation_actions = self.reset()
+                obs_pos, local_buffer = self.reset()
 
     def update_weights(self):
         '''load weights from learner'''
@@ -418,20 +411,8 @@ class Actor:
         self.model.reset()
         level_id = ray.get(self.global_buffer.get_level.remote())
         obs_pos = self.env.reset(ray.get(level_id))
-        # if use imitation learning
-        imitation = True if random.random() < config.imitation_ratio else False
-        if imitation:
-            imitation_actions = find_path(self.env)
-            while imitation_actions is None:
-                obs_pos = self.env.reset()
-                imitation_actions = find_path(self.env)
+        
+        local_buffer = LocalBuffer(self.id, self.env.map_size[0], obs_pos, False)
 
-            local_buffer = LocalBuffer(self.id, self.env.map_size[0], obs_pos, True)
-
-            return obs_pos, local_buffer, imitation, imitation_actions
-        else:
-            
-            local_buffer = LocalBuffer(self.id, self.env.map_size[0], obs_pos, False)
-
-            return obs_pos, local_buffer, imitation, None
+        return obs_pos, local_buffer
 

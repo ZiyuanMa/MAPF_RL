@@ -46,9 +46,6 @@ prioritized_replay_beta=0.4
 # use double q learning
 double_q = False
 
-# imitation learning
-imitation_ratio = 0.
-
 # dqn network setting
 cnn_channel = 64
 obs_dim = 2
