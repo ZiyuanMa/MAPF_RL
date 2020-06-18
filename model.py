@@ -173,8 +173,7 @@ class Network(nn.Module):
             nn.Linear(pos_dim, pos_latent_dim),
             nn.ReLU(True),
 
-            nn.Linear(pos_latent_dim, pos_latent_dim),
-            nn.ReLU(True),
+            ResBlock(pos_latent_dim)
         )
 
         self.concat_encoder = ResBlock(self.latent_dim)
@@ -207,6 +206,7 @@ class Network(nn.Module):
     @torch.no_grad()
     def step(self, obs, pos):
         # print(obs.shape)
+        num_agents = obs.size(0)
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
@@ -229,8 +229,8 @@ class Network(nn.Module):
         # print(pos_mat)
         in_obs_mask = (pos_mat<=config.obs_radius).all(2)
         # mask out agents that too far away from agent
-        _, ranking = dis_mat.topk(config.max_comm_agents, dim=1, largest=False)
-        dis_mask = torch.zeros((config.num_agents, config.num_agents), dtype=torch.bool)
+        _, ranking = dis_mat.topk(min(config.max_comm_agents, num_agents), dim=1, largest=False)
+        dis_mask = torch.zeros((num_agents, num_agents), dtype=torch.bool)
         dis_mask.scatter_(1, ranking, True)
         # print(in_obs_mask)
 
@@ -238,7 +238,7 @@ class Network(nn.Module):
         # assert dis_mask[0, 0] == 0, dis_mat
         self.hidden = self.comm(self.hidden, comm_mask)
         # print(self.hidden)
-        self.hidden = self.hidden.squeeze()
+        self.hidden = self.hidden.squeeze(0)
 
 
         adv_val = self.adv(self.hidden)
@@ -263,6 +263,9 @@ class Network(nn.Module):
 
     def bootstrap(self, obs, pos, steps, comm_mask):
         # comm_mask size: batch_size x bt_steps x num_agents x num_agents
+
+        num_agents = comm_mask.size(2)
+ 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
         pos = pos.contiguous().view(-1, self.pos_dim)
 
@@ -272,22 +275,22 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
-        latent = latent.view(config.batch_size*config.num_agents, config.bt_steps, self.latent_dim).transpose(0, 1)
+        latent = latent.view(config.batch_size*num_agents, config.bt_steps, self.latent_dim).transpose(0, 1)
 
         hidden_buffer = []
         hidden = self.recurrent(latent[0])
-        hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim)
+        hidden = hidden.view(config.batch_size, num_agents, self.latent_dim)
         hidden = self.comm(hidden, comm_mask[:, 0])
-        hidden = hidden.view(config.batch_size*config.num_agents, self.latent_dim)
-        hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
+        hidden = hidden.view(config.batch_size*num_agents, self.latent_dim)
+        hidden_buffer.append(hidden[torch.arange(0, config.batch_size*num_agents, num_agents)])
         for i in range(1, config.bt_steps):
             # hidden size: batch_size*num_agents x self.latent_dim
             hidden = self.recurrent(latent[i], hidden)
-            hidden = hidden.view(config.batch_size, config.num_agents, self.latent_dim)
+            hidden = hidden.view(config.batch_size, num_agents, self.latent_dim)
             hidden = self.comm(hidden, comm_mask[:, i])
-            hidden = hidden.view(config.batch_size*config.num_agents, self.latent_dim)
+            hidden = hidden.view(config.batch_size*num_agents, self.latent_dim)
             # only hidden from agent 0
-            hidden_buffer.append(hidden[torch.arange(0, config.batch_size*config.num_agents, config.num_agents)])
+            hidden_buffer.append(hidden[torch.arange(0, config.batch_size*num_agents, num_agents)])
 
         # hidden buffer size: batch_size x bt_steps x self.latent_dim
         hidden_buffer = torch.stack(hidden_buffer).transpose(0, 1)

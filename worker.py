@@ -68,9 +68,7 @@ class GlobalBuffer:
                 else:
                     self.stat_dict[stat_key].pop(0)
                     self.stat_dict[stat_key].append(buffer.done)
-            else:
-                print(stat_key)
-                raise AssertionError
+
 
         with self.lock:
             buffer.make_writeable()
@@ -99,12 +97,16 @@ class GlobalBuffer:
             idxes, priorities = self.priority_tree.batch_sample(batch_size)
             global_idxes = idxes // config.local_buffer_size
             local_idxes = idxes % config.local_buffer_size
+            max_num_agents = 0
 
             for global_idx, local_idx in zip(global_idxes, local_idxes):
 
                 ret = self.buffer[global_idx][local_idx]
                 obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps, comm_mask, next_comm_mask = ret   
-                
+
+                if max_num_agents < obs.shape[0]:
+                    max_num_agents = obs.shape[0]
+
                 b_obs.append(obs)
                 b_pos.append(pos)
                 b_action.append(action)
@@ -122,6 +124,16 @@ class GlobalBuffer:
             # importance sampling weights
             min_p = np.min(priorities)
             weights = np.power(priorities/min_p, -self.beta)
+
+            for obs, pos, next_obs, next_pos, comm_mask, next_comm_mask in zip(b_obs, b_pos, b_next_obs, b_next_pos, b_comm_mask, b_next_comm_mask):
+                if max_num_agents > obs.shape[0]:
+                    agent_pad = max_num_agents-obs.shape[0]
+                    obs = np.pad(obs, ((0,agent_pad), (0,0), (0,0), (0,0), (0,0)))
+                    pos = np.pad(pos, ((0,agent_pad), (0,0), (0,0)))
+                    comm_mask = np.pad(comm_mask, ((0,0), (0,agent_pad), (0,agent_pad)))
+                    next_obs = np.pad(next_obs, ((0,agent_pad), (0,0), (0,0), (0,0), (0,0)))
+                    next_pos = np.pad(next_pos, ((0,agent_pad), (0,0), (0,0)))
+                    next_comm_mask = np.pad(next_comm_mask, ((0,0), (0,agent_pad), (0,agent_pad)))
 
             data = (
                 torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
