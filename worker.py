@@ -28,9 +28,9 @@ class GlobalBuffer:
         self.beta = beta
         self.counter = 0
         self.data = []
-        self.stat_dict = {(1, 10):[]}
+        self.stat_dict = {config.init_set:[]}
         self.lock = threading.Lock()
-        self.level = ray.put([(1, 10)])
+        self.level = ray.put([config.init_set])
 
     def __len__(self):
         return self.size

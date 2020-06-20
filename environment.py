@@ -90,8 +90,8 @@ class Environment:
         '''
         self.adaptive = adaptive
         if adaptive:
-            self.num_agents = 1
-            self.map_size = (10, 10)
+            self.num_agents = config.init_set[0]
+            self.map_size = (config.init_set[1], config.init_set[1])
         else:
             self.num_agents = num_agents
             self.map_size = map_size
