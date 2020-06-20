@@ -120,7 +120,7 @@ class SumTree:
 
 
 class LocalBuffer:
-    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'q_buf',
+    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'hid_buf', 'q_buf',
                     'capacity', 'size', 'imitation', 'done', 'td_errors')
     def __init__(self, actor_id, map_len, init_obs_pos, imitation:bool, size=config.max_steps):
         """
@@ -135,6 +135,7 @@ class LocalBuffer:
         self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)
         self.act_buf = np.zeros((size, self.num_agents), dtype=np.uint8)
         self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
+        self.hid_buf = np.zeros((size, 256), dtype=np.float32)
 
         if config.distributional:
             # quantile values
@@ -195,9 +196,19 @@ class LocalBuffer:
             next_obs = np.pad(next_obs, ((0,pad_len),(0,0),(0,0),(0,0)))
             next_pos = np.pad(next_pos, ((0,pad_len),(0,0)))
 
-        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps
+        if idx == config.bt_steps:
+            hidden = np.zeros(256, dtype=np.float32)
+            next_hidden = self.hid_buf[0]
+        elif idx < config.bt_steps:
+            hidden = np.zeros(256, dtype=np.float32)
+            next_hidden = np.zeros(256, dtype=np.float32)
+        else:
+            hidden = self.hid_buf[idx-config.bt_steps-1]
+            next_hidden = self.hid_buf[idx-config.bt_steps]
 
-    def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray):
+        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps, hidden, next_hidden
+
+    def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray, hidden):
 
         assert self.size < self.capacity
 
@@ -205,6 +216,7 @@ class LocalBuffer:
         self.rew_buf[self.size] = reward
         self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
         self.q_buf[self.size] = q_val
+        self.hid_buf[self.size] = hidden
 
         self.size += 1
 

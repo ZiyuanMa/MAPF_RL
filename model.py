@@ -135,13 +135,14 @@ class Network(nn.Module):
 
         self.hidden = self.hidden.unsqueeze(0)
 
-        return actions, q_val
+        return actions, q_val, self.hidden[0, 0].numpy()
 
     def reset(self):
         self.hidden = None
 
-    def bootstrap(self, obs, pos, steps):
+    def bootstrap(self, obs, pos, steps, hidden):
         batch_size = obs.size(0)
+        hidden = hidden.unsqueeze(0)
 
         obs = obs.view(-1, self.obs_dim, 9, 9)
         pos = pos.view(-1, self.pos_dim)
@@ -161,7 +162,7 @@ class Network(nn.Module):
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
         self.recurrent.flatten_parameters()
-        _, hidden = self.recurrent(latent)
+        _, hidden = self.recurrent(latent, hidden)
 
         hidden = torch.squeeze(hidden)
         
