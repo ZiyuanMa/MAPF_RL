@@ -75,6 +75,8 @@ class SumTree:
         interval = sum/batch_size
 
         prefixsums = np.arange(0, sum, interval) + np.random.uniform(0, interval, batch_size)
+        if prefixsums[0] == 0:
+            prefixsums[0] = 1e-5
 
         idxes = np.zeros(batch_size, dtype=np.int)
 
@@ -86,7 +88,7 @@ class SumTree:
         priorities = self.tree[idxes]
         idxes -= self.capacity-1
 
-        assert np.all(priorities>0)
+        assert np.all(priorities>0), 'idx: {}, priority: {}'.format(idxes, priorities)
         assert np.all(idxes>=0) and np.all(idxes<self.capacity)
 
         return idxes, priorities
@@ -121,31 +123,30 @@ class SumTree:
 
 class LocalBuffer:
     __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'hid_buf', 'q_buf',
-                    'capacity', 'size', 'imitation', 'done', 'td_errors')
-    def __init__(self, actor_id, map_len, init_obs_pos, imitation:bool, size=config.max_steps):
+                    'capacity', 'size', 'done', 'td_errors')
+    def __init__(self, actor_id, num_agents, map_len, init_obs_pos, size=config.max_steps):
         """
         Prioritized Replay buffer for each actor
         """
 
         self.actor_id = actor_id
-        self.num_agents = init_obs_pos[0].shape[0]
+        self.num_agents = num_agents
         self.map_len = map_len
         # observation length should be (max steps+1)
-        self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)
-        self.act_buf = np.zeros((size, self.num_agents), dtype=np.uint8)
-        self.rew_buf = np.zeros((size, self.num_agents), dtype=np.float32)
+        self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
+        self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.uint8)
+        self.act_buf = np.zeros((size), dtype=np.uint8)
+        self.rew_buf = np.zeros((size), dtype=np.float32)
         self.hid_buf = np.zeros((size, 256), dtype=np.float32)
 
         if config.distributional:
             # quantile values
-            self.q_buf = np.zeros((size+1, self.num_agents, 5, 200), dtype=np.float32)
+            self.q_buf = np.zeros((size+1, 5, 200), dtype=np.float32)
         else:
-            self.q_buf = np.zeros((size+1, self.num_agents, 5), dtype=np.float32)
+            self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
 
         self.capacity = size
         self.size = 0
-        self.imitation = imitation
 
         self.obs_buf[0], self.pos_buf[0] = init_obs_pos
 
@@ -157,14 +158,9 @@ class LocalBuffer:
     def __getitem__(self, idx:int):
         assert idx < self.size
 
-        if self.imitation:
-            # n-step forward = 4
-            forward = min(4, self.size-idx)
-            reward = np.sum(self.rew_buf[idx:idx+forward, 0]*discounts[:forward], axis=0)
-        else:
-            # self play
-            forward = 1
-            reward = self.rew_buf[idx, 0]
+        # self play
+        forward = 1
+        reward = self.rew_buf[idx]
 
         if self.done and idx+forward == self.size:
             done = True
@@ -173,12 +169,9 @@ class LocalBuffer:
 
         # obs and pos
         bt_steps = min(idx+1, config.bt_steps)
-        # obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
-        # pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
-        obs = self.obs_buf[idx+1-bt_steps:idx+1, 0]
-        pos = self.pos_buf[idx+1-bt_steps:idx+1, 0]
+        obs = self.obs_buf[idx+1-bt_steps:idx+1]
+        pos = self.pos_buf[idx+1-bt_steps:idx+1]
 
- 
         if bt_steps < config.bt_steps:
             pad_len = config.bt_steps-bt_steps
             obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
@@ -186,10 +179,8 @@ class LocalBuffer:
 
         # next obs and next pos
         next_bt_steps = min(idx+1+forward, config.bt_steps)
-        # next_obs = np.swapaxes(self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
-        # next_pos = np.swapaxes(self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward], 0, 1)
-        next_obs = self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward, 0]
-        next_pos = self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward, 0]
+        next_obs = self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward]
+        next_pos = self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward]
 
         if next_bt_steps < config.bt_steps:
             pad_len = config.bt_steps-next_bt_steps
@@ -206,13 +197,13 @@ class LocalBuffer:
             hidden = self.hid_buf[idx-config.bt_steps-1]
             next_hidden = self.hid_buf[idx-config.bt_steps]
 
-        return obs, pos, self.act_buf[idx, 0], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps, hidden, next_hidden
+        return obs, pos, self.act_buf[idx], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps, hidden, next_hidden
 
-    def add(self, q_val:np.ndarray, actions:List[int], reward:List[float], next_obs_pos:np.ndarray, hidden):
+    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs_pos:np.ndarray, hidden):
 
         assert self.size < self.capacity
 
-        self.act_buf[self.size] = actions
+        self.act_buf[self.size] = action
         self.rew_buf[self.size] = reward
         self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
         self.q_buf[self.size] = q_val
@@ -236,46 +227,22 @@ class LocalBuffer:
 
         self.td_errors = np.zeros(self.capacity, dtype=np.float32)
 
-        if self.imitation:
-            for i in range(self.size):
-                # n-steps forward = 4
-                forward = min(4, self.size-i)
-                # print(self.rew_buf[i:i+forward, 0])
-                # print(self.rew_buf[i:i+forward, 0]*discounts[:forward])
-                if config.distributional:
-                    next_dist = self.q_buf[i+forward, 0]
-                    next_q = np.mean(next_dist, axis=1)
-                    next_action = np.argmax(next_q)
-                    next_dist = next_dist[next_action]
+        for i in range(self.size):
+            # forward = 1
+            if config.distributional:
+                next_dist = self.q_buf[i+1, 0]
+                next_q = np.mean(next_dist, axis=1)
+                next_action = np.argmax(next_q)
+                next_dist = next_dist[next_action]
 
-                    target_dist = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0) + (0.99**forward)*next_dist
+                target_dist = self.rew_buf[i, 0]+0.99*next_dist
 
-                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
+                curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
 
-                    self.td_errors[i] = quantile_huber_loss(curr_dist, target_dist)
-
-                else:
-                    reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
-                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
-                    self.td_errors[i] = np.abs(reward-q_val)
-
-        else:
-            for i in range(self.size):
-                # forward = 1
-                if config.distributional:
-                    next_dist = self.q_buf[i+1, 0]
-                    next_q = np.mean(next_dist, axis=1)
-                    next_action = np.argmax(next_q)
-                    next_dist = next_dist[next_action]
-
-                    target_dist = self.rew_buf[i, 0]+0.99*next_dist
-
-                    curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
-
-                    self.td_errors[i] = quantile_huber_loss(curr_dist, target_dist)
-                else:
-                    reward = self.rew_buf[i, 0]+0.99*np.max(self.q_buf[i+1, 0], axis=0)
-                    q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
-                    self.td_errors[i] = np.abs(reward-q_val)
+                self.td_errors[i] = quantile_huber_loss(curr_dist, target_dist)
+            else:
+                reward = self.rew_buf[i]+0.99*np.max(self.q_buf[i+1], axis=0)
+                q_val = self.q_buf[i, self.act_buf[i]]
+                self.td_errors[i] = np.abs(reward-q_val)
 
         delattr(self, 'q_buf')

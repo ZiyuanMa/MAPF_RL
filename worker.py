@@ -60,15 +60,15 @@ class GlobalBuffer:
 
 
     def add(self, buffer:LocalBuffer):
-        if buffer.actor_id >= 10:
+        if buffer.actor_id >= 8:
             stat_key = (buffer.num_agents, buffer.map_len)
+
             if stat_key in self.stat_dict:
                 if len(self.stat_dict[stat_key]) < 200:
                     self.stat_dict[stat_key].append(buffer.done)
                 else:
                     self.stat_dict[stat_key].pop(0)
                     self.stat_dict[stat_key].append(buffer.done)
-
 
         with self.lock:
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
@@ -195,13 +195,13 @@ class GlobalBuffer:
 
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
-    def __init__(self, buffer:GlobalBuffer):
+    def __init__(self, buffer:GlobalBuffer, net_worker):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, 90000, 100000], gamma=0.5)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, 180000, 190000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
@@ -211,17 +211,19 @@ class Learner:
         taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200, 1)
         self.taus = taus.expand(config.batch_size, 200, 200)
 
+        self.net_worker = net_worker
+
         self.store_weights()
 
-    def get_weights(self):
-        return self.weights_id
+    # def get_weights(self):
+    #     return self.weights_id
 
     def store_weights(self):
         state_dict = self.model.state_dict()
         for k, v in state_dict.items():
             state_dict[k] = v.cpu()
         weights_id = ray.put(state_dict)
-        self.weights_id = weights_id
+        self.net_worker.set_weights.remote(weights_id)
 
     def run(self):
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
@@ -229,7 +231,7 @@ class Learner:
 
     def train(self):
         batch_idx = torch.arange(config.batch_size)
-        for i in range(1, 110001):
+        for i in range(1, 200001):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
@@ -249,7 +251,6 @@ class Learner:
 
                 b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
 
-                
                 # batch_size * N * 1
                 b_dist = b_dist.unsqueeze(2)
                 # batch_size * 1 * N
@@ -330,6 +331,7 @@ class Learner:
             quantile_huber_loss = batch_quantile_huber_loss.mean()
 
         return priorities, quantile_huber_loss
+
     def stats(self, interval:int):
         print('number of updates: {}'.format(self.counter))
         print('update speed: {}/s'.format((self.counter-self.last_counter)/interval))
@@ -370,7 +372,7 @@ class Actor:
             next_obs_pos, r, done, _ = self.env.step(actions)
 
             # return data and update observation
-            local_buffer.add(q_val.numpy(), actions, r, next_obs_pos, hidden)
+            local_buffer.add(q_val[0], actions[0], r[0], (next_obs_pos[0][0], next_obs_pos[1][0]), hidden[0])
 
             if done == False and self.env.steps < self.max_steps:
 
@@ -383,26 +385,12 @@ class Actor:
 
                     _, q_val, _ = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
-                    local_buffer.finish(q_val)
+                    local_buffer.finish(q_val[0])
 
                 self.global_buffer.add.remote(local_buffer)
 
                 done = False
                 self.update_weights()
-
-
-                # self.model.reset()
-                # obs_pos = self.env.reset()
-                # imitation = True if random.random() < config.imitation_ratio else False
-                # if imitation:
-                #     imitation_actions = find_path(self.env)
-                #     while imitation_actions is None:
-                #         obs_pos = self.env.reset()
-                #         imitation_actions = find_path(self.env)
-
-                #     local_buffer = LocalBuffer(obs_pos, True)
-                # else:
-                #     local_buffer = LocalBuffer(obs_pos, False)
 
                 obs_pos, local_buffer = self.reset()
 
@@ -411,14 +399,27 @@ class Actor:
         weights_id = ray.get(self.learner.get_weights.remote())
         weights = ray.get(weights_id)
         self.model.load_state_dict(weights)
-
     
     def reset(self):
         self.model.reset()
         level_id = ray.get(self.global_buffer.get_level.remote())
         obs_pos = self.env.reset(ray.get(level_id))
-        
-        local_buffer = LocalBuffer(self.id, self.env.map_size[0], obs_pos, False)
+        local_buffer = LocalBuffer(self.id, self.env.num_agents, self.env.map_size[0], (obs_pos[0][0], obs_pos[1][0]))
 
         return obs_pos, local_buffer
 
+@ray.remote(num_cpus=1)
+class SharedNet:
+    def __init__(self):
+
+        self.weights_id = None
+    
+    def get_weights(self):
+        if self.weights_id is None:
+            raise RuntimeError
+
+        return self.weights_id
+
+    def set_weights(self, weights):
+
+        self.weights_id = ray.put(weights)

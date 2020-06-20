@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import random
 
-from worker import GlobalBuffer, Learner, Actor
+from worker import GlobalBuffer, Learner, Actor, SharedNet
 import time
 import ray
 import threading
@@ -16,13 +16,15 @@ random.seed(0)
 if __name__ == '__main__':
     ray.init()
 
+    net_worker = SharedNet.remote()
     buffer = GlobalBuffer.remote(2048)
-    learner = Learner.remote(buffer)
-    num_actors = 20
-    actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), learner, buffer) for i in range(num_actors)]
+    learner = Learner.remote(buffer, net_worker)
+    num_actors = 10
+    time.sleep(5)
+    actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), net_worker, buffer) for i in range(num_actors)]
 
-    [ actor.run.remote() for actor in actors ]
-
+    for actor in actors:
+        actor.run.remote()
     
     while not ray.get(buffer.ready.remote()):
         time.sleep(5)

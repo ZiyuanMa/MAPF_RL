@@ -127,7 +127,6 @@ class Network(nn.Module):
 
             actions = q_val.mean(2).argmax(1).tolist()
 
-
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
             # print(q_val.shape)
@@ -135,7 +134,7 @@ class Network(nn.Module):
 
         self.hidden = self.hidden.unsqueeze(0)
 
-        return actions, q_val, self.hidden[0, 0].numpy()
+        return actions, q_val.numpy(), self.hidden[0].numpy()
 
     def reset(self):
         self.hidden = None
