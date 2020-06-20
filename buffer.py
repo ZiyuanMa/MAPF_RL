@@ -80,9 +80,9 @@ class SumTree:
 
         for _ in range(self.layer-1):
             p = self.tree[idxes*2+1]
-            idxes = np.where(prefixsums<p, idxes*2+1, idxes*2+2)
+            idxes = np.where(prefixsums<=p, idxes*2+1, idxes*2+2)
             prefixsums = np.where(idxes%2==0, prefixsums-self.tree[idxes-1], prefixsums)
-
+        
         priorities = self.tree[idxes]
         idxes -= self.capacity-1
 
@@ -177,7 +177,7 @@ class LocalBuffer:
         obs = self.obs_buf[idx+1-bt_steps:idx+1, 0]
         pos = self.pos_buf[idx+1-bt_steps:idx+1, 0]
 
-
+ 
         if bt_steps < config.bt_steps:
             pad_len = config.bt_steps-bt_steps
             obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
