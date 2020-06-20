@@ -169,23 +169,14 @@ class LocalBuffer:
 
         # obs and pos
         bt_steps = min(idx+1, config.bt_steps)
-        obs = self.obs_buf[idx+1-bt_steps:idx+1]
-        pos = self.pos_buf[idx+1-bt_steps:idx+1]
+        obs = self.obs_buf[idx+1-bt_steps:idx+2]
+        pos = self.pos_buf[idx+1-bt_steps:idx+2]
 
         if bt_steps < config.bt_steps:
             pad_len = config.bt_steps-bt_steps
             obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
             pos = np.pad(pos, ((0,pad_len),(0,0)))
 
-        # next obs and next pos
-        next_bt_steps = min(idx+1+forward, config.bt_steps)
-        next_obs = self.obs_buf[idx+1+forward-next_bt_steps:idx+1+forward]
-        next_pos = self.pos_buf[idx+1+forward-next_bt_steps:idx+1+forward]
-
-        if next_bt_steps < config.bt_steps:
-            pad_len = config.bt_steps-next_bt_steps
-            next_obs = np.pad(next_obs, ((0,pad_len),(0,0),(0,0),(0,0)))
-            next_pos = np.pad(next_pos, ((0,pad_len),(0,0)))
 
         if idx == config.bt_steps:
             hidden = np.zeros(256, dtype=np.float32)
@@ -197,7 +188,7 @@ class LocalBuffer:
             hidden = self.hid_buf[idx-config.bt_steps-1]
             next_hidden = self.hid_buf[idx-config.bt_steps]
 
-        return obs, pos, self.act_buf[idx], reward, next_obs, next_pos, done, forward, bt_steps, next_bt_steps, hidden, next_hidden
+        return obs, pos, self.act_buf[idx], reward, done, forward, bt_steps, hidden, next_hidden
 
     def add(self, q_val:np.ndarray, action:int, reward:float, next_obs_pos:np.ndarray, hidden):
 

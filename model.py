@@ -143,8 +143,8 @@ class Network(nn.Module):
         batch_size = obs.size(0)
         hidden = hidden.unsqueeze(0)
 
-        obs = obs.view(-1, self.obs_dim, 9, 9)
-        pos = pos.view(-1, self.pos_dim)
+        obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
+        pos = pos.contiguous().view(-1, self.pos_dim)
 
 
         obs_latent = self.obs_encoder(obs)

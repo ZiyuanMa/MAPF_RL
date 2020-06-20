@@ -88,7 +88,7 @@ class GlobalBuffer:
 
     def sample_batch(self, batch_size:int) -> Tuple:
 
-        b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps = [], [], [], [], [], [], [], [], [], []
+        b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, = [], [], [], [], [], [], []
         idxes, priorities = [], []
         b_hidden, b_next_hidden = [], []
 
@@ -101,19 +101,16 @@ class GlobalBuffer:
             for global_idx, local_idx in zip(global_idxes, local_idxes):
 
                 ret = self.buffer[global_idx][local_idx]
-                obs, pos, action, reward, next_obs, next_pos, done, steps, bt_steps, next_bt_steps, hidden, next_hidden = ret   
+                obs, pos, action, reward, done, steps, bt_steps, hidden, next_hidden = ret   
                 
                 b_obs.append(obs)
                 b_pos.append(pos)
                 b_action.append(action)
                 b_reward.append(reward)
-                b_next_obs.append(next_obs)
-                b_next_pos.append(next_pos)
 
                 b_done.append(done)
                 b_steps.append(steps)
                 b_bt_steps.append(bt_steps)
-                b_next_bt_steps.append(next_bt_steps)
 
                 b_hidden.append(hidden)
                 b_next_hidden.append(next_hidden)
@@ -127,13 +124,10 @@ class GlobalBuffer:
                 torch.from_numpy(np.stack(b_pos).astype(np.float32)),
                 torch.LongTensor(b_action).unsqueeze(1),
                 torch.FloatTensor(b_reward).unsqueeze(1),
-                torch.from_numpy(np.stack(b_next_obs).astype(np.float32)),
-                torch.from_numpy(np.stack(b_next_pos).astype(np.float32)),
 
                 torch.FloatTensor(b_done).unsqueeze(1),
                 torch.FloatTensor(b_steps).unsqueeze(1),
                 b_bt_steps,
-                b_next_bt_steps,
                 torch.from_numpy(np.stack(b_hidden)),
                 torch.from_numpy(np.stack(b_next_hidden)),
 
@@ -236,13 +230,16 @@ class Learner:
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
  
-            b_obs, b_pos, b_action, b_reward, b_next_obs, b_next_pos, b_done, b_steps, b_bt_steps, b_next_bt_steps, b_hidden, b_next_hidden, idxes, weights, old_ptr = data
+            b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, b_next_hidden, idxes, weights, old_ptr = data
             b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
-            b_next_obs, b_next_pos, b_done, b_steps, weights = b_next_obs.to(self.device), b_next_pos.to(self.device), b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
+            b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
             b_hidden, b_next_hidden = b_hidden.to(self.device), b_next_hidden.to(self.device)
+
+            b_next_bt_steps = [ bt_steps+1 if bt_steps<config.bt_steps else bt_steps for bt_steps in b_bt_steps]
+
             if config.distributional:
                 with torch.no_grad():
-                    b_next_dist = self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_hidden)
+                    b_next_dist = self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden)
                     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
                     b_next_dist = b_next_dist[batch_idx, b_next_action, :]
 
@@ -264,12 +261,12 @@ class Learner:
                     # choose max q index from next observation
                     # double q-learning
                     if config.double_q:
-                        b_action_ = self.model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_hidden).argmax(1, keepdim=True)
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_hidden).gather(1, b_action_)
+                        b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_next_hidden).argmax(1, keepdim=True)
+                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_next_hidden).gather(1, b_action_)
                     else:
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_next_obs, b_next_pos, b_next_bt_steps, b_next_hidden).max(1, keepdim=True)[0]
+                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden).max(1, keepdim=True)[0]
 
-                b_q = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_hidden).gather(1, b_action)
+                b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden).gather(1, b_action)
 
                 td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
