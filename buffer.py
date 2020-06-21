@@ -39,7 +39,7 @@ class SumTree:
             layer += 1
         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
         self.layer = layer
-        self.tree = np.zeros(2**layer-1, dtype=np.float32)
+        self.tree = np.zeros(2**layer-1, dtype=np.float64)
         self.capacity = capacity
         self.size = 0
 
@@ -74,7 +74,7 @@ class SumTree:
         sum = self.tree[0]
         interval = sum/batch_size
 
-        prefixsums = np.arange(0, sum, interval) + np.random.uniform(0, interval, batch_size)
+        prefixsums = np.arange(0, sum, interval, dtype=np.float64) + np.random.uniform(0, interval, batch_size)
         if prefixsums[0] == 0:
             prefixsums[0] = 1e-5
 
@@ -84,6 +84,7 @@ class SumTree:
             p = self.tree[idxes*2+1]
             idxes = np.where(prefixsums<=p, idxes*2+1, idxes*2+2)
             prefixsums = np.where(idxes%2==0, prefixsums-self.tree[idxes-1], prefixsums)
+            prefixsums = np.where(prefixsums==0, 1e-5, prefixsums)
         
         priorities = self.tree[idxes]
         idxes -= self.capacity-1
@@ -216,7 +217,7 @@ class LocalBuffer:
         self.rew_buf = self.rew_buf[:self.size]
         self.q_buf = self.q_buf[:self.size+1]
 
-        self.td_errors = np.zeros(self.capacity, dtype=np.float32)
+        self.td_errors = np.zeros(self.capacity, dtype=np.float64)
 
         for i in range(self.size):
             # forward = 1
