@@ -32,6 +32,12 @@ class GlobalBuffer:
         self.lock = threading.Lock()
         self.level = ray.put([config.init_set])
 
+        # self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
+        # self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.uint8)
+        # self.act_buf = np.zeros((size), dtype=np.uint8)
+        # self.rew_buf = np.zeros((size), dtype=np.float32)
+        # self.hid_buf = np.zeros((size, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
+
     def __len__(self):
         return self.size
 
@@ -205,7 +211,7 @@ class GlobalBuffer:
 
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
-    def __init__(self, buffer:GlobalBuffer, net_worker):
+    def __init__(self, buffer:GlobalBuffer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = Network()
         self.model.to(self.device)
@@ -221,19 +227,16 @@ class Learner:
         taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200, 1)
         self.taus = taus.expand(config.batch_size, 200, 200)
 
-        self.net_worker = net_worker
-
         self.store_weights()
 
-    # def get_weights(self):
-    #     return self.weights_id
+    def get_weights(self):
+        return self.weights_id
 
     def store_weights(self):
         state_dict = self.model.state_dict()
         for k, v in state_dict.items():
             state_dict[k] = v.cpu()
-        weights_id = ray.put(state_dict)
-        self.net_worker.set_weights.remote(weights_id)
+        self.weights_id = ray.put(state_dict)
 
     def run(self):
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
@@ -306,7 +309,8 @@ class Learner:
                 self.scheduler.step()
 
                 # store new weights in shared memory
-                self.store_weights()
+                if i % 5  == 0:
+                    self.store_weights()
 
                 self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
 
@@ -427,18 +431,3 @@ class Actor:
 
         return obs_pos, local_buffer
 
-@ray.remote(num_cpus=1)
-class SharedNet:
-    def __init__(self):
-
-        self.weights_id = None
-    
-    def get_weights(self):
-        if self.weights_id is None:
-            raise RuntimeError
-
-        return self.weights_id
-
-    def set_weights(self, weights):
-
-        self.weights_id = ray.put(weights)
