@@ -405,7 +405,6 @@ class Actor:
                 self.global_buffer.add.remote(local_buffer)
 
                 done = False
-                self.update_weights()
 
                 obs_pos, local_buffer = self.reset()
 
