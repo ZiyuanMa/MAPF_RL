@@ -20,13 +20,27 @@ test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = torch.device('cpu')
 
-def create_test(num_agents:Union[int,list,tuple]):
+def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple]):
 
-    name = './test{}.pkl'.format(num_agents) if num_agents != None else './test.pkl'
+    name = './test{}_{}.pkl'.format(agent_range, map_range)
 
     tests = {'maps': [], 'agents': [], 'goals': [], 'opt_steps': []}
 
-    env = Environment(num_agents=num_agents)
+    if type(agent_range) is int:
+        num_agents = agent_range
+    elif type(agent_range) is list:
+        num_agents = random.choice(agent_range)
+    else:
+        num_agents = random.randint(agent_range[0], agent_range[1])
+
+    if type(map_range) is int:
+        map_length = map_range
+    elif type(map_range) is list:
+        map_length = random.choice(map_range)
+    else:
+        map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
+
+    env = Environment(num_agents=num_agents, map_length=map_length)
 
     for _ in range(test_num):
         tests['maps'].append(np.copy(env.map))
@@ -43,7 +57,21 @@ def create_test(num_agents:Union[int,list,tuple]):
 
         tests['opt_steps'].append(len(actions))
 
-        env.reset()
+        if type(agent_range) is int:
+            num_agents = agent_range
+        elif type(agent_range) is list:
+            num_agents = random.choice(agent_range)
+        else:
+            num_agents = random.randint(agent_range[0], agent_range[1])
+
+        if type(map_range) is int:
+            map_length = map_range
+        elif type(map_range) is list:
+            map_length = random.choice(map_range)
+        else:
+            map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
+
+        env.reset(num_agents=num_agents, map_length=map_length)
 
     tests['opt_mean_steps'] = sum(tests['opt_steps']) / len(tests['opt_steps'])
 
@@ -200,17 +228,8 @@ def make_animation():
     
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description='test MAPF model')
 
-    # parser.add_argument('--mode', type=str, choices=['test', 'create'], default='test', help='create test set or run test set')
-    # parser.add_argument('--number', type=int, default=4, help='number of agents in environment')
-
-    # args = parser.parse_args()
-
-    # if args.mode == 'test':
-    #     test_model(args.number)
-    # elif args.mode == 'create':
-    #     create_test(args.number)
-    test_model(4)
+    # create_test(8, 20)
+    # test_model(4)
     # make_animation()
     
