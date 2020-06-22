@@ -195,7 +195,7 @@ class Learner:
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
         self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, 180000, 190000], gamma=0.5)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, config.training_times-20000, config.training_times-10000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
@@ -225,7 +225,7 @@ class Learner:
 
     def train(self):
         batch_idx = torch.arange(config.batch_size)
-        for i in range(1, 200001):
+        for i in range(1, config.training_times+1):
 
             data_id = ray.get(self.buffer.get_data.remote())
             data = ray.get(data_id)
