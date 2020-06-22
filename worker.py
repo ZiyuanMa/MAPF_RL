@@ -365,6 +365,7 @@ class Actor:
         self.learner = learner
         self.global_buffer = buffer
         self.max_steps = config.max_steps
+        self.counter = 0
 
     def run(self):
         """ Generate training batch sample """
@@ -407,6 +408,11 @@ class Actor:
                 self.update_weights()
 
                 obs_pos, local_buffer = self.reset()
+
+            self.counter += 1
+            if self.counter == config.actor_update_steps:
+                self.update_weights()
+                self.counter = 0
 
     def update_weights(self):
         '''load weights from learner'''
