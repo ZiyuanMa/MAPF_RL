@@ -34,6 +34,8 @@ load_model = None
 local_buffer_size = max_steps
 global_buffer_size = 1024*local_buffer_size
 
+actor_update_steps = 200
+
 # gradient norm clipping
 grad_norm_dqn=40
 
@@ -49,8 +51,8 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 16
-max_map_lenght = 70
+max_num_agetns = 8
+max_map_lenght = 20
 pass_rate = 0.8
 
 # dqn network setting

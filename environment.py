@@ -72,7 +72,7 @@ def map_partition(map):
 
 
 class Environment:
-    def __init__(self, adaptive=False, map_size:int=config.map_length, num_agents:int=config.num_agents,
+    def __init__(self, adaptive=False, map_length:int=config.map_length, num_agents:int=config.num_agents,
                 obs_radius:int=config.obs_radius, reward_fn:dict=config.reward_fn):
         '''
         self.map_length:
@@ -94,7 +94,7 @@ class Environment:
             self.map_size = (config.init_set[1], config.init_set[1])
         else:
             self.num_agents = num_agents
-            self.map_size = map_size
+            self.map_size = (map_length, map_length)
 
         # set as same as in PRIMAL
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
@@ -143,12 +143,15 @@ class Environment:
 
         self.steps = 0
 
-    def reset(self, level=None):
+    def reset(self, level=None, num_agents=None, map_length=None):
 
         if self.adaptive:
             rand = random.choice(level)
             self.num_agents = rand[0]
             self.map_size = (rand[1], rand[1])
+        else:
+            self.num_agents = num_agents
+            self.map_size = (map_length, map_length)
 
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)

@@ -32,6 +32,12 @@ class GlobalBuffer:
         self.lock = threading.Lock()
         self.level = ray.put([config.init_set])
 
+        # self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
+        # self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.uint8)
+        # self.act_buf = np.zeros((size), dtype=np.uint8)
+        # self.rew_buf = np.zeros((size), dtype=np.float32)
+        # self.hid_buf = np.zeros((size, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
+
     def __len__(self):
         return self.size
 
@@ -168,11 +174,12 @@ class GlobalBuffer:
                 if add_agent_key[0] <= config.max_num_agetns and add_agent_key not in self.stat_dict:
                     self.stat_dict[add_agent_key] = []
                 
-                add_map_key = (key[0], key[1]+5) 
-                if add_map_key[1] <= config.max_map_lenght and add_map_key not in self.stat_dict:
-                    self.stat_dict[add_map_key] = []
+                if key[1] < config.max_map_lenght:
+                    add_map_key = (key[0], key[1]+5) 
+                    if add_map_key not in self.stat_dict:
+                        self.stat_dict[add_map_key] = []
                 
-                del self.stat_dict[key]
+                    del self.stat_dict[key]
 
         self.level = ray.put(list(self.stat_dict.keys()))
 
@@ -187,9 +194,24 @@ class GlobalBuffer:
     def get_level(self):
         return self.level
 
+    def check_done(self):
+
+        for i in range(config.max_num_agetns):
+            if (i+1, config.max_map_lenght) not in self.stat_dict:
+                return False
+        
+            l = self.stat_dict[(i+1, config.max_map_lenght)]
+            
+            if len(l) < 200:
+                return False
+            elif sum(l) < 200*config.pass_rate:
+                return False
+            
+        return True
+
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
-    def __init__(self, buffer:GlobalBuffer, net_worker):
+    def __init__(self, buffer:GlobalBuffer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = Network()
         self.model.to(self.device)
@@ -205,103 +227,102 @@ class Learner:
         taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200, 1)
         self.taus = taus.expand(config.batch_size, 200, 200)
 
-        self.net_worker = net_worker
-
         self.store_weights()
 
-    # def get_weights(self):
-    #     return self.weights_id
+    def get_weights(self):
+        return self.weights_id
 
     def store_weights(self):
         state_dict = self.model.state_dict()
         for k, v in state_dict.items():
             state_dict[k] = v.cpu()
-        weights_id = ray.put(state_dict)
-        self.net_worker.set_weights.remote(weights_id)
+        self.weights_id = ray.put(state_dict)
 
     def run(self):
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
         self.learning_thread.start()
 
     def train(self):
-        batch_idx = torch.arange(config.batch_size)
-        for i in range(1, config.training_times+1):
+        while not ray.get(self.buffer.check_done.remote()):
+            for i in range(1, 10001):
 
-            data_id = ray.get(self.buffer.get_data.remote())
-            data = ray.get(data_id)
- 
-            b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, b_next_hidden, idxes, weights, old_ptr = data
-            b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
-            b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
-            b_hidden, b_next_hidden = b_hidden.to(self.device), b_next_hidden.to(self.device)
+                data_id = ray.get(self.buffer.get_data.remote())
+                data = ray.get(data_id)
+    
+                b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, b_next_hidden, idxes, weights, old_ptr = data
+                b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
+                b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
+                b_hidden, b_next_hidden = b_hidden.to(self.device), b_next_hidden.to(self.device)
 
-            b_next_bt_steps = [ bt_steps+1 if bt_steps<config.bt_steps else bt_steps for bt_steps in b_bt_steps]
+                b_next_bt_steps = [ bt_steps+1 if bt_steps<config.bt_steps else bt_steps for bt_steps in b_bt_steps]
 
-            if config.distributional:
-                with torch.no_grad():
-                    b_next_dist = self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden)
-                    b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
-                    b_next_dist = b_next_dist[batch_idx, b_next_action, :]
+                if config.distributional:
+                    raise NotImplementedError
+                    # with torch.no_grad():
+                    #     b_next_dist = self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden)
+                    #     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
+                    #     b_next_dist = b_next_dist[batch_idx, b_next_action, :]
 
-                b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_hidden)
-                b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
+                    # b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_hidden)
+                    # b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
 
-                b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
+                    # b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
 
-                # batch_size * N * 1
-                b_dist = b_dist.unsqueeze(2)
-                # batch_size * 1 * N
-                b_target_dist = b_target_dist.unsqueeze(1)
+                    # # batch_size * N * 1
+                    # b_dist = b_dist.unsqueeze(2)
+                    # # batch_size * 1 * N
+                    # b_target_dist = b_target_dist.unsqueeze(1)
 
-                td_errors = b_target_dist-b_dist
-                priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
+                    # td_errors = b_target_dist-b_dist
+                    # priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
 
-            else:
-                with torch.no_grad():
-                    # choose max q index from next observation
-                    # double q-learning
-                    if config.double_q:
-                        b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_next_hidden).argmax(1, keepdim=True)
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_next_hidden).gather(1, b_action_)
-                    else:
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden).max(1, keepdim=True)[0]
+                else:
+                    with torch.no_grad():
+                        # choose max q index from next observation
+                        # double q-learning
+                        if config.double_q:
+                            b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_next_hidden).argmax(1, keepdim=True)
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_next_hidden).gather(1, b_action_)
+                        else:
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden).max(1, keepdim=True)[0]
 
-                b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden).gather(1, b_action)
 
-                td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
+                    td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
-                priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
+                    priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
 
-                loss = (weights * self.huber_loss(td_error)).mean()
+                    loss = (weights * self.huber_loss(td_error)).mean()
 
-            self.optimizer.zero_grad()
+                self.optimizer.zero_grad()
 
-            loss.backward()
-            self.loss = loss.item()
-            # scaler.scale(loss).backward()
+                loss.backward()
+                self.loss = loss.item()
+                # scaler.scale(loss).backward()
 
-            nn.utils.clip_grad_norm_(self.model.parameters(), 40)
+                nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
-            self.optimizer.step()
-            # scaler.step(optimizer)
-            # scaler.update()
+                self.optimizer.step()
+                # scaler.step(optimizer)
+                # scaler.update()
 
-            self.scheduler.step()
+                self.scheduler.step()
 
-            # store new weights in shared memory
-            self.store_weights()
+                # store new weights in shared memory
+                if i % 5  == 0:
+                    self.store_weights()
 
-            self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
+                self.buffer.update_priorities.remote(idxes, priorities, old_ptr)
 
-            self.counter += 1
+                self.counter += 1
 
-            # update target net, save model
-            if i % 2000 == 0:
-                self.tar_model.load_state_dict(self.model.state_dict())
-                torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
-            
-            # if i == 10000:
-            #     config.imitation_ratio = 0
+                # update target net, save model
+                if i % 2000 == 0:
+                    self.tar_model.load_state_dict(self.model.state_dict())
+                    torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
+                
+                # if i == 10000:
+                #     config.imitation_ratio = 0
 
         self.done = True
     def huber_loss(self, td_error, kappa=1.0):
@@ -348,6 +369,7 @@ class Actor:
         self.learner = learner
         self.global_buffer = buffer
         self.max_steps = config.max_steps
+        self.counter = 0
 
     def run(self):
         """ Generate training batch sample """
@@ -387,9 +409,13 @@ class Actor:
                 self.global_buffer.add.remote(local_buffer)
 
                 done = False
-                self.update_weights()
 
                 obs_pos, local_buffer = self.reset()
+
+            self.counter += 1
+            if self.counter == config.actor_update_steps:
+                self.update_weights()
+                self.counter = 0
 
     def update_weights(self):
         '''load weights from learner'''
@@ -405,18 +431,3 @@ class Actor:
 
         return obs_pos, local_buffer
 
-@ray.remote(num_cpus=1)
-class SharedNet:
-    def __init__(self):
-
-        self.weights_id = None
-    
-    def get_weights(self):
-        if self.weights_id is None:
-            raise RuntimeError
-
-        return self.weights_id
-
-    def set_weights(self, weights):
-
-        self.weights_id = ray.put(weights)
