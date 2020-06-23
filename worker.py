@@ -32,11 +32,11 @@ class GlobalBuffer:
         self.lock = threading.Lock()
         self.level = ray.put([config.init_set])
 
-        # self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
-        # self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.uint8)
-        # self.act_buf = np.zeros((size), dtype=np.uint8)
-        # self.rew_buf = np.zeros((size), dtype=np.float32)
-        # self.hid_buf = np.zeros((size, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
+        self.obs_buf = np.zeros(((config.max_steps+config.bt_steps)*capacity, *config.obs_shape), dtype=np.bool)
+        self.pos_buf = np.zeros(((config.max_steps+config.bt_steps)*capacity, *config.pos_shape), dtype=np.uint8)
+        self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
+        self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
+        self.hid_buf = np.zeros((config.max_steps*capacity, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
 
     def __len__(self):
         return self.size
@@ -66,7 +66,7 @@ class GlobalBuffer:
 
 
     def add(self, buffer:LocalBuffer):
-        if buffer.actor_id >= 8:
+        if buffer.actor_id >= 12:
             stat_key = (buffer.num_agents, buffer.map_len)
 
             if stat_key in self.stat_dict:
