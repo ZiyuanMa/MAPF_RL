@@ -20,7 +20,7 @@ pos_shape = (4,)
 ############################################################
 
 # basic training setting
-training_times = 200000
+training_times = 1000000
 save_interval=2000
 gamma=0.99
 batch_size=256
@@ -32,7 +32,7 @@ bt_steps = 8
 load_model = None
 
 local_buffer_size = max_steps
-global_buffer_size = 2048*local_buffer_size
+global_buffer_size = 1024*local_buffer_size
 
 # gradient norm clipping
 grad_norm_dqn=40

@@ -41,12 +41,12 @@ class GlobalBuffer:
 
     def prepare_data(self):
         while True:
-            if len(self.data) <= 2:
+            if len(self.data) <= 4:
                 data = self.sample_batch(config.batch_size)
                 data_id = ray.put(data)
                 self.data.append(data_id)
             else:
-                time.sleep(0.2)
+                time.sleep(0.1)
     
     def get_data(self):
 
