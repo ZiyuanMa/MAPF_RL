@@ -141,6 +141,7 @@ class Network(nn.Module):
 
     def bootstrap(self, obs, pos, steps, hidden):
         batch_size = obs.size(0)
+        step = obs.size(1)
         hidden = hidden.unsqueeze(0)
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
@@ -156,7 +157,7 @@ class Network(nn.Module):
         # latent = latent.split(steps)
         # latent = pad_sequence(latent, batch_first=True)
 
-        latent = latent.view(batch_size, config.bt_steps, self.latent_dim)
+        latent = latent.view(batch_size, step, self.latent_dim)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 

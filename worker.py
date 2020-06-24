@@ -135,7 +135,7 @@ class GlobalBuffer:
 
                 action = self.act_buf[idx]
                 reward = self.rew_buf[idx]
-                done = self.done_buf[idx]
+                done = self.done_buf[global_idx]
                 steps = 1
                 bt_steps = min(local_idx+1, config.bt_steps)
                 hidden = self.hid_buf[idx]
@@ -238,7 +238,7 @@ class GlobalBuffer:
             
         return True
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
     def __init__(self, buffer:GlobalBuffer):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -313,7 +313,7 @@ class Learner:
                             b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
                             b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).gather(1, b_action_)
                         else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
 
                     b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden).gather(1, b_action)
 
