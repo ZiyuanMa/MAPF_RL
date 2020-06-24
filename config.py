@@ -20,6 +20,7 @@ pos_shape = (4,)
 ############################################################
 
 # basic training setting
+training_times = 1000000
 save_interval=2000
 gamma=0.99
 batch_size=64
@@ -27,11 +28,13 @@ learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 32
+bt_steps = 8
 load_model = None
 
 local_buffer_size = max_steps
-global_buffer_size = 2048*local_buffer_size
+global_buffer_size = 1024*local_buffer_size
+
+actor_update_steps = 200
 
 # gradient norm clipping
 grad_norm_dqn=40
@@ -47,9 +50,10 @@ prioritized_replay_beta=0.4
 double_q = False
 
 # adaptive learning
-max_map_lenght = 70
-max_num_agetns = 16
-pass_rate = 0.05
+init_set = (1, 10)
+max_num_agetns = 4
+max_map_lenght = 20
+pass_rate = 0.9
 
 # dqn network setting
 cnn_channel = 64

@@ -72,7 +72,7 @@ def map_partition(map):
 
 
 class Environment:
-    def __init__(self, adaptive=False, map_size:int=config.map_length, num_agents:int=config.num_agents,
+    def __init__(self, adaptive=False, map_length:int=config.map_length, num_agents:int=config.num_agents,
                 obs_radius:int=config.obs_radius, reward_fn:dict=config.reward_fn):
         '''
         self.map_length:
@@ -90,14 +90,11 @@ class Environment:
         '''
         self.adaptive = adaptive
         if adaptive:
-            self.level = config.env_level
-            rand = random.randint(0, self.level)
-            self.num_agents = rand//3+1
-            self.map_size = (10+rand%3*30, 10+rand%3*30)
+            self.num_agents = config.init_set[0]
+            self.map_size = (config.init_set[1], config.init_set[1])
         else:
             self.num_agents = num_agents
-            self.map_size = map_size
-
+            self.map_size = (map_length, map_length)
 
         # set as same as in PRIMAL
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
@@ -111,7 +108,6 @@ class Environment:
             self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int)
             partition_list = map_partition(self.map)
             partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
-        
         
         self.agents_pos = np.empty((self.num_agents, 2), dtype=np.int)
         self.goals_pos = np.empty((self.num_agents, 2), dtype=np.int)
@@ -147,20 +143,15 @@ class Environment:
 
         self.steps = 0
 
-        # for save render images
-        # self.fig = plt.figure()
-        # self.imgs = []
-
-        # self.history = [np.copy(self.agents_pos)]
-
-    def reset(self, level=None):
+    def reset(self, level=None, num_agents=None, map_length=None):
 
         if self.adaptive:
-            
             rand = random.choice(level)
             self.num_agents = rand[0]
             self.map_size = (rand[1], rand[1])
-
+        else:
+            self.num_agents = num_agents
+            self.map_size = (map_length, map_length)
 
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)
@@ -172,7 +163,6 @@ class Environment:
             self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)
             partition_list = map_partition(self.map)
             partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
-        
         
         self.agents_pos = np.empty((self.num_agents, 2), dtype=np.int)
         self.goals_pos = np.empty((self.num_agents, 2), dtype=np.int)
@@ -202,11 +192,6 @@ class Environment:
             pos_num = sum([ len(partition) for partition in partition_list ])
 
         self.steps = 0
-
-        # self.fig = plt.figure()
-        # self.imgs = []
-
-        # self.history = [np.copy(self.agents_pos)]
 
         return self.observe()
 

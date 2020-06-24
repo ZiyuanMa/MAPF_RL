@@ -1,3 +1,5 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
 import torch
 import numpy as np
 import random
@@ -18,11 +20,12 @@ if __name__ == '__main__':
 
     buffer = GlobalBuffer.remote(2048)
     learner = Learner.remote(buffer)
-    num_actors = 10
+    num_actors = 12
+    time.sleep(5)
     actors = [Actor.remote(i, 0.4**(1+(i/(num_actors-1))*7), learner, buffer) for i in range(num_actors)]
 
-    [ actor.run.remote() for actor in actors ]
-
+    for actor in actors:
+        actor.run.remote()
     
     while not ray.get(buffer.ready.remote()):
         time.sleep(5)
