@@ -215,6 +215,7 @@ class LocalBuffer:
         self.pos_buf = self.pos_buf[:self.size+1]
         self.act_buf = self.act_buf[:self.size]
         self.rew_buf = self.rew_buf[:self.size]
+        self.hid_buf = self.hid_buf[:self.size]
         self.q_buf = self.q_buf[:self.size+1]
 
         self.td_errors = np.zeros(self.capacity, dtype=np.float64)
@@ -237,4 +238,4 @@ class LocalBuffer:
                 q_val = self.q_buf[i, self.act_buf[i]]
                 self.td_errors[i] = np.abs(reward-q_val)
 
-        delattr(self, 'q_buf')
+        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.pos_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size
