@@ -268,7 +268,7 @@ class Network(nn.Module):
         batch_size = obs.size(0)
         step = obs.size(1)
         num_agents = comm_mask.size(2)
- 
+
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
         pos = pos.contiguous().view(-1, self.pos_dim)
 
@@ -278,7 +278,7 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
-        latent = latent.view(config.batch_size*num_agents, config.bt_steps, self.latent_dim).transpose(0, 1)
+        latent = latent.view(config.batch_size*num_agents, step, self.latent_dim).transpose(0, 1)
 
         hidden_buffer = []
         hidden = self.recurrent(latent[0], hidden)

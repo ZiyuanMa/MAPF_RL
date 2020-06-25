@@ -100,7 +100,7 @@ class GlobalBuffer:
             self.hid_buf[start_idx:start_idx+data[10], :data[1]] = data[7]
             self.done_buf[self.ptr] = data[9]
             self.size_buf[self.ptr] = data[10]
-            self.comm_mask[start_idx:start_idx+data[10], :data[1], :data[1]] = data[11]
+            self.comm_mask[start_idx:start_idx+data[10]+1, :data[1], :data[1]] = data[11]
 
             self.ptr = (self.ptr+1) % self.capacity
 
@@ -124,18 +124,18 @@ class GlobalBuffer:
                 if local_idx < config.bt_steps-1:
                     obs = self.obs_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
                     pos = self.pos_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
-                    comm_mask = self.comm_mask[global_idx*config.max_steps:idx+global_idx+2]
+                    comm_mask = self.comm_mask[global_idx*config.max_steps:idx+2]
                     pad_len = config.bt_steps-1-local_idx
-                    obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
-                    pos = np.pad(pos, ((0,pad_len),(0,0)))
+                    obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0),(0,0)))
+                    pos = np.pad(pos, ((0,pad_len),(0,0),(0,0)))
                     comm_mask = np.pad(comm_mask, ((0,pad_len),(0,0),(0,0)))
-                    hidden = np.zeros((config.max_num_agetns, 256), dtype=np.float32)
+                    hidden = np.zeros((config.max_num_agetns, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
 
                 elif local_idx == config.bt_steps-1:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     pos = self.pos_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     comm_mask = self.comm_mask[idx+1-config.bt_steps:idx+2]
-                    hidden = np.zeros(256, dtype=np.float32)
+                    hidden = np.zeros((config.max_num_agetns, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
 
                 else:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
@@ -169,15 +169,15 @@ class GlobalBuffer:
             #     torch.cuda.empty_cache()
 
             data = (
-                torch.from_numpy(np.concatenate(b_obs).astype(np.float32)),
-                torch.from_numpy(np.concatenate(b_pos).astype(np.float32)),
+                torch.from_numpy(np.stack(b_obs).astype(np.float32)),
+                torch.from_numpy(np.stack(b_pos).astype(np.float32)),
                 torch.LongTensor(b_action).unsqueeze(1),
                 torch.FloatTensor(b_reward).unsqueeze(1),
 
                 torch.FloatTensor(b_done).unsqueeze(1),
                 torch.FloatTensor(b_steps).unsqueeze(1),
-                b_bt_steps,
-                torch.from_numpy(np.stack(b_hidden)),
+                torch.LongTensor(b_bt_steps),
+                torch.from_numpy(np.concatenate(b_hidden)),
                 torch.from_numpy(np.stack(b_comm_mask)),
 
                 idxes,
@@ -300,7 +300,7 @@ class Learner:
                 b_hidden = b_hidden.to(self.device)
                 b_comm_mask = b_comm_mask.to(self.device)
 
-                b_next_bt_steps = [ bt_steps+1 for bt_steps in b_bt_steps ]
+                b_next_bt_steps = b_bt_steps+1
 
                 if config.distributional:
                     raise NotImplementedError
@@ -327,12 +327,12 @@ class Learner:
                         # choose max q index from next observation
                         # double q-learning
                         if config.double_q:
-                            b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).gather(1, b_action_)
+                            b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden, b_comm_mask).argmax(1, keepdim=True)
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden, b_comm_mask).gather(1, b_action_)
                         else:
                             b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
 
-                    b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden, b_comm_mask).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden, b_comm_mask[:, :-1]).gather(1, b_action)
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
@@ -363,7 +363,7 @@ class Learner:
                 self.counter += 1
 
                 # update target net, save model
-                if i % 2000 == 0:
+                if i % config.target_network_update_freq == 0:
                     self.tar_model.load_state_dict(self.model.state_dict())
                     torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
                 
