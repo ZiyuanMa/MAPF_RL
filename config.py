@@ -23,7 +23,7 @@ pos_shape = (4,)
 training_times = 1000000
 save_interval=2000
 gamma=0.99
-batch_size=256
+batch_size=512
 learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
@@ -34,7 +34,7 @@ load_model = None
 local_buffer_size = max_steps
 global_buffer_size = 1024*local_buffer_size
 
-actor_update_steps = 200
+actor_update_steps = 400
 
 # gradient norm clipping
 grad_norm_dqn=40
@@ -51,8 +51,8 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 4
-max_map_lenght = 20
+max_num_agetns = 8
+max_map_lenght = 45
 pass_rate = 0.9
 
 # dqn network setting

@@ -69,7 +69,7 @@ class GlobalBuffer:
 
     def add(self, data:Tuple):
         # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size
-        if data[0] >= 12:
+        if data[0] >= 10:
             stat_key = (data[1], data[2])
 
             if stat_key in self.stat_dict:
