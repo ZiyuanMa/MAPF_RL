@@ -346,7 +346,7 @@ class Learner:
                 self.counter += 1
 
                 # update target net, save model
-                if i % 2000 == 0:
+                if i % config.target_network_update_freq == 0:
                     self.tar_model.load_state_dict(self.model.state_dict())
                     torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(i)))
                 
