@@ -289,6 +289,4 @@ class LocalBuffer:
 
         self.comm_mask = np.bitwise_and(in_obs_mask, dis_mask)
 
-
-        delattr(self, 'q_buf')
-        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.pos_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size
+        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.pos_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size, self.comm_mask

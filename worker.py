@@ -34,13 +34,14 @@ class GlobalBuffer:
         self.lock = threading.Lock()
         self.level = ray.put([config.init_set])
 
-        self.obs_buf = np.zeros(((config.max_steps+1)*capacity, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros(((config.max_steps+1)*capacity, *config.pos_shape), dtype=np.uint8)
+        self.obs_buf = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, *config.obs_shape), dtype=np.bool)
+        self.pos_buf = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, *config.pos_shape), dtype=np.uint8)
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
-        self.hid_buf = np.zeros((config.max_steps*capacity, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
+        self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
+        self.comm_mask = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.max_num_agetns), dtype=np.bool)
 
     def __len__(self):
         return self.size
@@ -70,7 +71,7 @@ class GlobalBuffer:
 
 
     def add(self, data:Tuple):
-        # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size
+        # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size, comm_mask
         if data[0] >= 12:
             stat_key = (data[1], data[2])
 
@@ -82,7 +83,7 @@ class GlobalBuffer:
                     self.stat_dict[stat_key].append(data[9])
 
         with self.lock:
-            buffer.make_writeable()
+
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
             start_idx = self.ptr*config.max_steps
             # update buffer size
@@ -92,19 +93,20 @@ class GlobalBuffer:
 
             self.priority_tree.batch_update(idxes, data[8]**self.alpha)
 
-            self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1] = data[3]
-            self.pos_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1] = data[4]
+            self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1, :data[1]] = data[3]
+            self.pos_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1, :data[1]] = data[4]
             self.act_buf[start_idx:start_idx+data[10]] = data[5]
             self.rew_buf[start_idx:start_idx+data[10]] = data[6]
-            self.hid_buf[start_idx:start_idx+data[10]] = data[7]
+            self.hid_buf[start_idx:start_idx+data[10], :data[1]] = data[7]
             self.done_buf[self.ptr] = data[9]
             self.size_buf[self.ptr] = data[10]
+            self.comm_mask[start_idx:start_idx+data[10], :data[1], :data[1]] = data[11]
 
             self.ptr = (self.ptr+1) % self.capacity
 
     def sample_batch(self, batch_size:int) -> Tuple:
 
-        b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, = [], [], [], [], [], [], []
+        b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_comm_mask = [], [], [], [], [], [], [], []
         idxes, priorities = [], []
         b_hidden = []
 
@@ -122,19 +124,23 @@ class GlobalBuffer:
                 if local_idx < config.bt_steps-1:
                     obs = self.obs_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
                     pos = self.pos_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
+                    comm_mask = self.comm_mask[global_idx*config.max_steps:idx+global_idx+2]
                     pad_len = config.bt_steps-1-local_idx
                     obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
                     pos = np.pad(pos, ((0,pad_len),(0,0)))
-                    hidden = np.zeros(256, dtype=np.float32)
+                    comm_mask = np.pad(comm_mask, ((0,pad_len),(0,0),(0,0)))
+                    hidden = np.zeros((config.max_num_agetns, 256), dtype=np.float32)
 
                 elif local_idx == config.bt_steps-1:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     pos = self.pos_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
+                    comm_mask = self.comm_mask[idx+1-config.bt_steps:idx+2]
                     hidden = np.zeros(256, dtype=np.float32)
 
                 else:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     pos = self.pos_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
+                    comm_mask = self.comm_mask[idx+1-config.bt_steps:idx+2]
                     hidden = self.hid_buf[idx-config.bt_steps-1]
 
                 action = self.act_buf[idx]
@@ -142,7 +148,6 @@ class GlobalBuffer:
                 done = self.done_buf[global_idx]
                 steps = 1
                 bt_steps = min(local_idx+1, config.bt_steps)
-                hidden = self.hid_buf[idx]
                 
                 b_obs.append(obs)
                 b_pos.append(pos)
@@ -159,13 +164,6 @@ class GlobalBuffer:
             # importance sampling weights
             min_p = np.min(priorities)
             weights = np.power(priorities/min_p, -self.beta)
-
-            for i in range(config.batch_size):
-                if max_num_agents > b_obs[i].shape[0]:
-                    agent_pad = max_num_agents-b_obs[i].shape[0]
-                    b_obs[i] = np.pad(b_obs[i], ((0,agent_pad), (0,0), (0,0), (0,0), (0,0)))
-                    b_pos[i] = np.pad(b_pos[i], ((0,agent_pad), (0,0), (0,0)))
-                    b_comm_mask[i] = np.pad(b_comm_mask[i], ((0,0), (0,agent_pad), (0,agent_pad)))
 
             # if max_num_agents > 1:
             #     torch.cuda.empty_cache()
@@ -296,10 +294,11 @@ class Learner:
                 data_id = ray.get(self.buffer.get_data.remote())
                 data = ray.get(data_id)
     
-                b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, idxes, weights, old_ptr = data
+                b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, b_comm_mask, idxes, weights, old_ptr = data
                 b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
                 b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
                 b_hidden = b_hidden.to(self.device)
+                b_comm_mask = b_comm_mask.to(self.device)
 
                 b_next_bt_steps = [ bt_steps+1 for bt_steps in b_bt_steps ]
 
@@ -331,9 +330,9 @@ class Learner:
                             b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
                             b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).gather(1, b_action_)
                         else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
 
-                    b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden, b_comm_mask).gather(1, b_action)
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
