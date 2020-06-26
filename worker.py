@@ -41,7 +41,7 @@ class GlobalBuffer:
         self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
-        self.comm_mask = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.max_num_agetns), dtype=np.bool)
+        self.comm_mask = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, config.max_num_agetns), dtype=np.bool)
 
     def __len__(self):
         return self.size
@@ -72,7 +72,7 @@ class GlobalBuffer:
 
     def add(self, data:Tuple):
         # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size, comm_mask
-        if data[0] >= 12:
+        if data[0] >= 10:
             stat_key = (data[1], data[2])
 
             if stat_key in self.stat_dict:
@@ -124,7 +124,7 @@ class GlobalBuffer:
                 if local_idx < config.bt_steps-1:
                     obs = self.obs_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
                     pos = self.pos_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
-                    comm_mask = self.comm_mask[global_idx*config.max_steps:idx+2]
+                    comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+2]
                     pad_len = config.bt_steps-1-local_idx
                     obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0),(0,0)))
                     pos = np.pad(pos, ((0,pad_len),(0,0),(0,0)))
@@ -134,13 +134,13 @@ class GlobalBuffer:
                 elif local_idx == config.bt_steps-1:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     pos = self.pos_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    comm_mask = self.comm_mask[idx+1-config.bt_steps:idx+2]
+                    comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+2]
                     hidden = np.zeros((config.max_num_agetns, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
 
                 else:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     pos = self.pos_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    comm_mask = self.comm_mask[idx+1-config.bt_steps:idx+2]
+                    comm_mask = self.comm_mask[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     hidden = self.hid_buf[idx-config.bt_steps-1]
 
                 action = self.act_buf[idx]

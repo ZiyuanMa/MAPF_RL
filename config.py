@@ -52,7 +52,7 @@ double_q = False
 # adaptive learning
 init_set = (1, 10)
 max_num_agetns = 8
-max_map_lenght = 20
+max_map_lenght = 45
 pass_rate = 0.9
 
 # dqn network setting
