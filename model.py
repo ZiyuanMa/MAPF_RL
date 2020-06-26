@@ -240,7 +240,6 @@ class Network(nn.Module):
         # print(self.hidden)
         self.hidden = self.hidden.squeeze(0)
 
-
         adv_val = self.adv(self.hidden)
         state_val = self.state(self.hidden)
 
@@ -257,7 +256,6 @@ class Network(nn.Module):
             # print(q_val.shape)
             actions = torch.argmax(q_val, 1).tolist()
 
-
         return actions, q_val.numpy(), self.hidden.numpy()
 
     def reset(self):
@@ -265,8 +263,7 @@ class Network(nn.Module):
 
     def bootstrap(self, obs, pos, steps, hidden, comm_mask):
         # comm_mask size: batch_size x bt_steps x num_agents x num_agents
-        batch_size = obs.size(0)
-        step = obs.size(1)
+        max_steps = obs.size(1)
         num_agents = comm_mask.size(2)
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
@@ -278,15 +275,10 @@ class Network(nn.Module):
         concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
-        latent = latent.view(config.batch_size*num_agents, step, self.latent_dim).transpose(0, 1)
+        latent = latent.view(config.batch_size*num_agents, max_steps, self.latent_dim).transpose(0, 1)
 
         hidden_buffer = []
-        hidden = self.recurrent(latent[0], hidden)
-        hidden = hidden.view(config.batch_size, num_agents, self.latent_dim)
-        hidden = self.comm(hidden, comm_mask[:, 0])
-        hidden = hidden.view(config.batch_size*num_agents, self.latent_dim)
-        hidden_buffer.append(hidden[torch.arange(0, config.batch_size*num_agents, num_agents)])
-        for i in range(1, step):
+        for i in range(max_steps):
             # hidden size: batch_size*num_agents x self.latent_dim
             hidden = self.recurrent(latent[i], hidden)
             hidden = hidden.view(config.batch_size, num_agents, self.latent_dim)
