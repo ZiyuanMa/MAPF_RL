@@ -70,39 +70,41 @@ class GlobalBuffer:
             return self.data.pop(0)
 
 
-    def add(self, data:Tuple):
+    def add(self, buffer_list:List):
         # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size, comm_mask
-        if data[0] >= 12:
-            stat_key = (data[1], data[2])
+        for buffer in buffer_list:
+            if buffer[0] >= 12:
+                stat_key = (buffer[1], buffer[2])
 
-            if stat_key in self.stat_dict:
-                if len(self.stat_dict[stat_key]) < 200:
-                    self.stat_dict[stat_key].append(data[9])
-                else:
-                    self.stat_dict[stat_key].pop(0)
-                    self.stat_dict[stat_key].append(data[9])
+                if stat_key in self.stat_dict:
+                    if len(self.stat_dict[stat_key]) < 200:
+                        self.stat_dict[stat_key].append(buffer[9])
+                    else:
+                        self.stat_dict[stat_key].pop(0)
+                        self.stat_dict[stat_key].append(buffer[9])
 
         with self.lock:
 
-            idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
-            start_idx = self.ptr*config.max_steps
-            # update buffer size
-            self.size -= self.size_buf[self.ptr].item()
-            self.size += data[10]
-            self.counter += data[10]
+            for buffer in buffer_list:
+                idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
+                start_idx = self.ptr*config.max_steps
+                # update buffer size
+                self.size -= self.size_buf[self.ptr].item()
+                self.size += buffer[10]
+                self.counter += buffer[10]
 
-            self.priority_tree.batch_update(idxes, data[8]**self.alpha)
+                self.priority_tree.batch_update(idxes, buffer[8]**self.alpha)
 
-            self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1, :data[1]] = data[3]
-            self.pos_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1, :data[1]] = data[4]
-            self.act_buf[start_idx:start_idx+data[10]] = data[5]
-            self.rew_buf[start_idx:start_idx+data[10]] = data[6]
-            self.hid_buf[start_idx:start_idx+data[10], :data[1]] = data[7]
-            self.done_buf[self.ptr] = data[9]
-            self.size_buf[self.ptr] = data[10]
-            self.comm_mask[start_idx:start_idx+data[10]+1, :data[1], :data[1]] = data[11]
+                self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+buffer[10]+1, :buffer[1]] = buffer[3]
+                self.pos_buf[start_idx+self.ptr:start_idx+self.ptr+buffer[10]+1, :buffer[1]] = buffer[4]
+                self.act_buf[start_idx:start_idx+buffer[10]] = buffer[5]
+                self.rew_buf[start_idx:start_idx+buffer[10]] = buffer[6]
+                self.hid_buf[start_idx:start_idx+buffer[10], :buffer[1]] = buffer[7]
+                self.done_buf[self.ptr] = buffer[9]
+                self.size_buf[self.ptr] = buffer[10]
+                self.comm_mask[start_idx:start_idx+buffer[10]+1, :buffer[1], :buffer[1]] = buffer[11]
 
-            self.ptr = (self.ptr+1) % self.capacity
+                self.ptr = (self.ptr+1) % self.capacity
 
     def sample_batch(self, batch_size:int) -> Tuple:
 
@@ -115,7 +117,6 @@ class GlobalBuffer:
             idxes, priorities = self.priority_tree.batch_sample(batch_size)
             global_idxes = idxes // config.local_buffer_size
             local_idxes = idxes % config.local_buffer_size
-            max_num_agents = 1
 
             for idx, global_idx, local_idx in zip(idxes, global_idxes, local_idxes):
                 
@@ -420,7 +421,7 @@ class Actor:
     def run(self):
         """ Generate training batch sample """
         done = False
-
+        buffer_list = []
         obs_pos, local_buffer = self.reset()
 
         while True:
@@ -445,14 +446,14 @@ class Actor:
             else:
                 # finish and send buffer
                 if done:
-                    data = local_buffer.finish()
+                    buffer = local_buffer.finish()
                 else:
 
                     _, q_val, _ = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
-                    data = local_buffer.finish(q_val[0])
+                    buffer = local_buffer.finish(q_val[0])
 
-                self.global_buffer.add.remote(data)
+                buffer_list.append(buffer)
 
                 done = False
 
@@ -460,6 +461,8 @@ class Actor:
 
             self.counter += 1
             if self.counter == config.actor_update_steps:
+                self.global_buffer.add.remote(buffer_list)
+                buffer_list.clear()
                 self.update_weights()
                 self.counter = 0
 
