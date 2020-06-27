@@ -73,7 +73,7 @@ class GlobalBuffer:
     def add(self, buffer_list:List):
         # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size, comm_mask
         for buffer in buffer_list:
-            if buffer[0] >= 12:
+            if buffer[0] >= 10:
                 stat_key = (buffer[1], buffer[2])
 
                 if stat_key in self.stat_dict:

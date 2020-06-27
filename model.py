@@ -105,6 +105,7 @@ class CommBlock(nn.Module):
         if len(comm_idx[0]) == 0:
             return latent
 
+        print('use comm')
         if len(comm_idx)>1:
             update_mask = update_mask.unsqueeze(2)
 
@@ -236,7 +237,6 @@ class Network(nn.Module):
         comm_mask = torch.bitwise_and(in_obs_mask, dis_mask)
         # assert dis_mask[0, 0] == 0, dis_mat
         self.hidden = self.comm(self.hidden, comm_mask)
-        # print(self.hidden)
         self.hidden = self.hidden.squeeze(0)
 
         adv_val = self.adv(self.hidden)
@@ -283,6 +283,7 @@ class Network(nn.Module):
             hidden = self.comm(hidden, comm_mask[:, i])
             # only hidden from agent 0
             hidden_buffer.append(hidden[:, 0])
+            hidden = hidden.view(config.batch_size*num_agents, self.latent_dim)
 
         # hidden buffer size: batch_size x bt_steps x self.latent_dim
         hidden_buffer = torch.stack(hidden_buffer).transpose(0, 1)
