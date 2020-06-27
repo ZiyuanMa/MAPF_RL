@@ -22,7 +22,6 @@ class GlobalBuffer:
         self.capacity = capacity
         self.size = 0
         self.ptr = 0
-        self.buffer = [ None for _ in range(capacity) ]
         self.priority_tree = SumTree(capacity*config.local_buffer_size)
         self.alpha = alpha
         self.beta = beta
