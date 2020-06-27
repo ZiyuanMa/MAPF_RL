@@ -21,7 +21,7 @@ pos_shape = (4,)
 
 # basic training setting
 training_times = 1000000
-save_interval=2000
+save_interval=10000
 gamma=0.99
 batch_size=128
 learning_starts=50000
