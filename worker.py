@@ -146,7 +146,10 @@ class GlobalBuffer:
 
                 action = self.act_buf[idx]
                 reward = self.rew_buf[idx]
-                done = self.done_buf[global_idx]
+                if local_idx==self.size_buf[global_idx]-1 and self.done_buf[global_idx]:
+                    done = True
+                else:
+                    done = False
                 steps = 1
                 bt_steps = min(local_idx+1, config.bt_steps)
                 
@@ -165,9 +168,6 @@ class GlobalBuffer:
             # importance sampling weights
             min_p = np.min(priorities)
             weights = np.power(priorities/min_p, -self.beta)
-
-            # if max_num_agents > 1:
-            #     torch.cuda.empty_cache()
 
             data = (
                 torch.from_numpy(np.stack(b_obs).astype(np.float32)),
