@@ -79,6 +79,7 @@ class GlobalBuffer:
                     self.stat_dict[stat_key].append(data[9])
 
         with self.lock:
+            
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
             start_idx = self.ptr*config.max_steps
             # update buffer size
@@ -134,10 +135,12 @@ class GlobalBuffer:
 
                 action = self.act_buf[idx]
                 reward = self.rew_buf[idx]
-                done = self.done_buf[global_idx]
+                if local_idx == self.size_buf[global_idx]-1 and self.done_buf[global_idx]:
+                    done = True
+                else:
+                    done = False
                 steps = 1
                 bt_steps = min(local_idx+1, config.bt_steps)
-                hidden = self.hid_buf[idx]
                 
                 b_obs.append(obs)
                 b_pos.append(pos)
