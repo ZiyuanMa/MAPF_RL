@@ -105,7 +105,6 @@ class CommBlock(nn.Module):
         if len(comm_idx[0]) == 0:
             return latent
 
-        print('use comm')
         if len(comm_idx)>1:
             update_mask = update_mask.unsqueeze(2)
 
@@ -298,7 +297,6 @@ class Network(nn.Module):
             adv_val = adv_val.view(-1, 5, self.num_quant)
             state_val = state_val.unsqueeze(1)
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
