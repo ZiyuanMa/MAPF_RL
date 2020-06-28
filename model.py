@@ -264,6 +264,9 @@ class Network(nn.Module):
         max_steps = obs.size(1)
         num_agents = comm_mask.size(2)
 
+        obs = obs.transpose(1, 2)
+        pos = pos.transpose(1, 2)
+
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
         pos = pos.contiguous().view(-1, self.pos_dim)
 
