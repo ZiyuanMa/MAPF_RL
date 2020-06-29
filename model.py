@@ -89,7 +89,7 @@ class CommBlock(nn.Module):
         super().__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.self_attn = nn.ModuleList([MultiHeadAttention(input_dim, output_dim, num_heads) for _ in range(num_layers)])
+        self.self_attn = MultiHeadAttention(input_dim, output_dim, num_heads)
 
         self.update_cell = nn.GRUCell(output_dim, input_dim)
 
@@ -111,9 +111,9 @@ class CommBlock(nn.Module):
         # print(comm_mask)
         attn_mask = comm_mask==False
 
-        for attn_layer in self.self_attn:
+        for _ in range(2):
 
-            info = attn_layer(latent, attn_mask=attn_mask)
+            info = self.self_attn(latent, attn_mask=attn_mask)
             # latent = attn_layer(latent, attn_mask=attn_mask)
             # print(info.shape)
             if len(comm_idx)==1:
