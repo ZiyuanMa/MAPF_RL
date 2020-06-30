@@ -39,6 +39,9 @@ actor_update_steps = 400
 # gradient norm clipping
 grad_norm_dqn=40
 
+# n-step forward
+forward_steps = 2
+
 # distributional dqn
 distributional = False
 

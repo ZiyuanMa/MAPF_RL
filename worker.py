@@ -111,36 +111,36 @@ class GlobalBuffer:
             global_idxes = idxes // config.local_buffer_size
             local_idxes = idxes % config.local_buffer_size
 
-            for idx, global_idx, local_idx in zip(idxes, global_idxes, local_idxes):
+            for idx, global_idx, local_idx in zip(idxes.tolist(), global_idxes.tolist(), local_idxes.tolist()):
                 
                 assert local_idx < self.size_buf[global_idx]
 
-                if local_idx < config.bt_steps-1:
-                    obs = self.obs_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
-                    pos = self.pos_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
-                    pad_len = config.bt_steps-1-local_idx
+                steps = int(min(config.forward_steps, (self.size_buf[global_idx]-local_idx).item()))
+                bt_steps = min(local_idx+1, config.bt_steps)
+                # print(idx+global_idx-bt_steps+1)
+                # print(idx+global_idx+1+steps)
+                obs = self.obs_buf[idx+global_idx-bt_steps+1:idx+global_idx+1+steps]
+                pos = self.pos_buf[idx+global_idx-bt_steps+1:idx+global_idx+1+steps]
+
+                if local_idx <= config.bt_steps-1:
+                    hidden = np.zeros(256, dtype=np.float32)
+                else:
+                    hidden = self.hid_buf[idx-config.bt_steps-1]
+                
+                if obs.shape[0] < config.bt_steps+config.forward_steps:
+                    pad_len = config.bt_steps+config.forward_steps-obs.shape[0]
                     obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
                     pos = np.pad(pos, ((0,pad_len),(0,0)))
-                    hidden = np.zeros(256, dtype=np.float32)
-
-                elif local_idx == config.bt_steps-1:
-                    obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    pos = self.pos_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    hidden = np.zeros(256, dtype=np.float32)
-
-                else:
-                    obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    pos = self.pos_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    hidden = self.hid_buf[idx-config.bt_steps-1]
 
                 action = self.act_buf[idx]
-                reward = self.rew_buf[idx]
-                if local_idx == self.size_buf[global_idx]-1 and self.done_buf[global_idx]:
+                reward = 0
+                for i in range(steps):
+                    reward += self.rew_buf[idx+i]*0.99**i
+
+                if local_idx >= self.size_buf[global_idx]-config.forward_steps and self.done_buf[global_idx]:
                     done = True
                 else:
                     done = False
-                steps = 1
-                bt_steps = min(local_idx+1, config.bt_steps)
                 
                 b_obs.append(obs)
                 b_pos.append(pos)
@@ -285,7 +285,7 @@ class Learner:
                 b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
                 b_hidden = b_hidden.to(self.device)
 
-                b_next_bt_steps = [ bt_steps+1 for bt_steps in b_bt_steps ]
+                b_next_bt_steps = [ bt_steps+steps.item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
 
                 if config.distributional:
                     raise NotImplementedError
@@ -308,6 +308,7 @@ class Learner:
                     # priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
 
                 else:
+                    # print(b_next_bt_steps)
                     with torch.no_grad():
                         # choose max q index from next observation
                         # double q-learning
@@ -317,7 +318,7 @@ class Learner:
                         else:
                             b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
 
-                    b_q = self.model.bootstrap(b_obs[:, :-1], b_pos[:, :-1], b_bt_steps, b_hidden).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_pos[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
