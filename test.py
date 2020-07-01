@@ -232,4 +232,4 @@ if __name__ == '__main__':
     # create_test(8, 20)
     # test_model(4)
     # make_animation()
-    
+    create_test(1, 50)
