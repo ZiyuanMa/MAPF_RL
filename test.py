@@ -17,7 +17,7 @@ torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
 test_num = 200
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 # device = torch.device('cpu')
 
 def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple]):
@@ -79,7 +79,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(num_agents, test_case='test4.pkl'):
+def test_model(test_case='test8_20.pkl'):
 
     network = Network()
     network.eval()
@@ -95,15 +95,15 @@ def test_model(num_agents, test_case='test4.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = config.save_interval
+    model_name = 418000
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 4
+        case = 30
         show = False
-        show_steps = 30
+        show_steps = 100
 
         fail = 0
         optimal = 0
@@ -121,7 +121,7 @@ def test_model(num_agents, test_case='test4.pkl'):
 
                 obs_pos = env.observe()
 
-                actions, q_vals = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
+                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
 
                 if i == case and show and env.steps < show_steps:
                     print(q_vals)
@@ -216,7 +216,7 @@ def make_animation():
             imgs[-1].append(text)
 
 
-        actions, _ = network.step(torch.from_numpy(obs_pos[0].astype(np.float32)).to(device), torch.from_numpy(obs_pos[1].astype(np.float32)).to(device))
+        actions, _, _ = network.step(torch.from_numpy(obs_pos[0].astype(np.float32)).to(device), torch.from_numpy(obs_pos[1].astype(np.float32)).to(device))
         obs_pos, _, done, _ = env.step(actions)
         # print(done)
 
@@ -230,6 +230,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(8, 20)
-    # test_model(4)
+    test_model()
     # make_animation()
-    create_test(1, 50)
+    # create_test(1, 20)

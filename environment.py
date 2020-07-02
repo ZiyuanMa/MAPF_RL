@@ -149,7 +149,7 @@ class Environment:
             rand = random.choice(level)
             self.num_agents = rand[0]
             self.map_size = (rand[1], rand[1])
-        else:
+        elif num_agents is not None:
             self.num_agents = num_agents
             self.map_size = (map_length, map_length)
 
@@ -203,6 +203,7 @@ class Environment:
         self.goals_pos = np.copy(goals_pos)
 
         self.num_agents = agents_pos.shape[0]
+        self.map_size = (self.map.shape[0], self.map.shape[1])
 
         # self.history = [np.copy(self.agents_pos)]
         

@@ -2,7 +2,7 @@
 ####################    environment     ####################
 ############################################################
 env_level = 0
-map_length = 20
+map_length = 50
 num_agents = 2
 obs_radius = 4
 reward_fn = dict(move=-0.075,
@@ -28,7 +28,7 @@ learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 8
+bt_steps = 10
 load_model = None
 
 local_buffer_size = max_steps
@@ -55,7 +55,7 @@ double_q = False
 # adaptive learning
 init_set = (1, 10)
 max_num_agetns = 8
-max_map_lenght = 45
+max_map_lenght = 50
 pass_rate = 0.9
 
 # dqn network setting
