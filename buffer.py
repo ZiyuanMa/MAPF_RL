@@ -142,6 +142,7 @@ class LocalBuffer:
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
         self.hid_buf = np.zeros((size, self.num_agents, 256), dtype=np.float32)
+        self.comm_mask = np.zeros((size+1, self.num_agents, self.num_agents), dtype=np.bool)
 
         if config.distributional:
             # quantile values
@@ -219,7 +220,7 @@ class LocalBuffer:
 
         # return obs, pos, self.act_buf[idx], reward, done, forward, bt_steps, hidden, next_hidden
 
-    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs_pos:np.ndarray, hidden):
+    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs_pos:np.ndarray, hidden, comm_mask):
 
         assert self.size < self.capacity
 
@@ -228,16 +229,18 @@ class LocalBuffer:
         self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
         self.q_buf[self.size] = q_val
         self.hid_buf[self.size] = hidden
+        self.comm_mask[self.size] = comm_mask
 
         self.size += 1
 
-    def finish(self, last_q_val=None):
+    def finish(self, last_q_val=None, last_comm_mask=None):
         # last q value is None if done
         if last_q_val is None:
             self.done = True
         else:
             self.done = False
             self.q_buf[self.size] = last_q_val
+            self.comm_mask[self.size] = last_comm_mask
         
         self.obs_buf = self.obs_buf[:self.size+1]
         self.pos_buf = self.pos_buf[:self.size+1]
@@ -245,6 +248,7 @@ class LocalBuffer:
         self.rew_buf = self.rew_buf[:self.size]
         self.hid_buf = self.hid_buf[:self.size]
         self.q_buf = self.q_buf[:self.size+1]
+        self.comm_mask = self.comm_mask[:self.size+1]
 
         self.td_errors = np.zeros(self.capacity, dtype=np.float64)
 
@@ -285,8 +289,14 @@ class LocalBuffer:
         relative_dis = np.sqrt(relative_pos[:, :, :, 0]**2+relative_pos[:, :, :, 1]**2)
         dis_mask = np.zeros((self.size+1, self.num_agents, self.num_agents), dtype=np.bool)
         max_comm_agents = min(config.max_comm_agents, self.num_agents)
-        dis_mask[np.repeat(np.arange(self.size+1), self.num_agents*max_comm_agents), np.tile(np.arange(self.num_agents), (self.size+1)*max_comm_agents), relative_dis.argsort()[:,:,:max_comm_agents].flatten()] = True
+        dis_mask[np.repeat(np.arange(self.size+1), self.num_agents*max_comm_agents), np.tile(np.repeat(np.arange(self.num_agents), max_comm_agents), (self.size+1)), relative_dis.argsort()[:,:,:max_comm_agents].flatten()] = True
 
-        self.comm_mask = np.bitwise_and(in_obs_mask, dis_mask)
+        if not (self.comm_mask == np.bitwise_and(in_obs_mask, dis_mask)).all():
+            # print(self.comm_mask)
+            # print('and')
+            # print(np.bitwise_and(in_obs_mask, dis_mask))
+            print(in_obs_mask)
+            print(dis_mask)
+            raise RuntimeError
 
         return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.pos_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size, self.comm_mask

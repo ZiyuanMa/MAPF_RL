@@ -117,6 +117,7 @@ class CommBlock(nn.Module):
             # latent = attn_layer(latent, attn_mask=attn_mask)
             # print(info.shape)
             if len(comm_idx)==1:
+
                 batch_idx = torch.zeros(len(comm_idx[0]), dtype=torch.long)
                 # print(info[batch_idx, comm_idx[0]].shape)
                 # print(latent[batch_idx, comm_idx[0]].shape)
@@ -254,7 +255,7 @@ class Network(nn.Module):
             # print(q_val.shape)
             actions = torch.argmax(q_val, 1).tolist()
 
-        return actions, q_val.numpy(), self.hidden.numpy()
+        return actions, q_val.numpy(), self.hidden.numpy(), comm_mask.numpy()
 
     def reset(self):
         self.hidden = None

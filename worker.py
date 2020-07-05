@@ -428,7 +428,7 @@ class Actor:
 
             # sample action
             # Note: q_val is quantile values if it's distributional
-            actions, q_val, hidden = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
+            actions, q_val, hidden, comm_mask = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
             if random.random() < self.epsilon:
                 # Note: only one agent can do random action in order to make the whole environment more stable
@@ -438,7 +438,7 @@ class Actor:
             next_obs_pos, r, done, _ = self.env.step(actions)
 
             # return data and update observation
-            local_buffer.add(q_val[0], actions[0], r[0], (next_obs_pos[0][0], next_obs_pos[1][0]), hidden[0])
+            local_buffer.add(q_val[0], actions[0], r[0], (next_obs_pos[0][0], next_obs_pos[1][0]), hidden[0], comm_mask)
 
             if done == False and self.env.steps < self.max_steps:
 
@@ -449,9 +449,9 @@ class Actor:
                     buffer = local_buffer.finish()
                 else:
 
-                    _, q_val, _ = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
+                    _, q_val, _, comm_mask = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
 
-                    buffer = local_buffer.finish(q_val[0])
+                    buffer = local_buffer.finish(q_val[0], comm_mask)
 
                 buffer_list.append(buffer)
 

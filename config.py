@@ -27,7 +27,7 @@ batch_size=128
 learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
-max_steps = 256
+max_steps = 8
 bt_steps = 8
 load_model = None
 
@@ -50,8 +50,8 @@ prioritized_replay_beta=0.4
 double_q = False
 
 # adaptive learning
-init_set = (1, 10)
-max_num_agetns = 8
+init_set = (4, 10)
+max_num_agetns = 4
 max_map_lenght = 50
 pass_rate = 0.9
 
