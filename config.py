@@ -60,7 +60,5 @@ pass_rate = 0.9
 
 # dqn network setting
 cnn_channel = 64
-obs_dim = 2
 obs_latent_dim = 240
-pos_dim = 4
 pos_latent_dim = 16

@@ -138,7 +138,7 @@ class LocalBuffer:
         self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.uint8)
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
-        self.hid_buf = np.zeros((size, 256), dtype=np.float32)
+        self.hid_buf = np.zeros((size, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
 
         if config.distributional:
             # quantile values

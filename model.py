@@ -43,8 +43,8 @@ class ResBlock(nn.Module):
 
 class Network(nn.Module):
     def __init__(self, cnn_channel=config.cnn_channel,
-                obs_dim=config.obs_dim, obs_latent_dim=config.obs_latent_dim,
-                pos_dim=config.pos_dim, pos_latent_dim=config.pos_latent_dim,
+                obs_dim=config.obs_shape[0], obs_latent_dim=config.obs_latent_dim,
+                pos_dim=config.pos_shape[0], pos_latent_dim=config.pos_latent_dim,
                 distributional=config.distributional):
 
         super().__init__()
