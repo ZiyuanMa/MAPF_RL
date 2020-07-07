@@ -59,15 +59,11 @@ class Network(nn.Module):
             nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
 
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
-            nn.ReLU(True),
+            ResBlock(cnn_channel, type='cnn'),
 
-            nn.Conv2d(cnn_channel, cnn_channel*2, 3, 1, 1),
-            nn.ReLU(True),
+            ResBlock(cnn_channel, type='cnn'),
 
-            ResBlock(cnn_channel*2, type='cnn'),
-
-            nn.Conv2d(cnn_channel*2, 4, 1, 1),
+            nn.Conv2d(cnn_channel, 4, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
