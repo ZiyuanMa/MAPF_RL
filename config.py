@@ -50,8 +50,8 @@ prioritized_replay_beta=0.4
 double_q = False
 
 # adaptive learning
-init_set = (4, 10)
-max_num_agetns = 4
+init_set = (1, 10)
+max_num_agetns = 8
 max_map_lenght = 50
 pass_rate = 0.9
 
