@@ -82,7 +82,10 @@ class Network(nn.Module):
             ResBlock(pos_latent_dim),
         )
 
-        self.concat_encoder = ResBlock(self.latent_dim)
+        self.concat_encoder = nn.Sequential(
+            ResBlock(self.latent_dim),
+            ResBlock(self.latent_dim),
+        )
 
         self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
 
