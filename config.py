@@ -27,8 +27,8 @@ batch_size=128
 learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
-max_steps = 8
-bt_steps = 8
+max_steps = 256
+bt_steps = 10
 load_model = None
 
 local_buffer_size = max_steps
