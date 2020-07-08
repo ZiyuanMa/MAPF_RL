@@ -35,7 +35,7 @@ class GlobalBuffer:
         self.level = ray.put([config.init_set])
 
         self.obs_buf = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, *config.pos_shape), dtype=np.uint8)
+        self.pos_buf = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, *config.pos_shape), dtype=np.int16)
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
         self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)

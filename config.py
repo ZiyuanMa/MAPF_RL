@@ -12,7 +12,7 @@ reward_fn = dict(move=-0.075,
                 finish=3)
 
 obs_shape = (2,9,9)
-pos_shape = (4,)
+pos_shape = (2,)
 
 
 ############################################################
@@ -61,6 +61,7 @@ obs_dim = 2
 obs_latent_dim = 240
 pos_dim = 4
 pos_latent_dim = 16
+latent_dim = obs_latent_dim+pos_latent_dim
 
 # communication
 max_comm_agents = 3 # including agent itself, means one can at most communicate with (max_comm_agents-1) agents

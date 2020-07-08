@@ -149,18 +149,14 @@ class Network(nn.Module):
         self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
+            nn.Conv2d(config.obs_shape[0], cnn_channel, 3, 1, 1),
             nn.ReLU(True),
 
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
-            nn.ReLU(True),
+            ResBlock(cnn_channel, type='cnn'),
 
-            nn.Conv2d(cnn_channel, cnn_channel*2, 3, 1, 1),
-            nn.ReLU(True),
+            ResBlock(cnn_channel, type='cnn'),
 
-            ResBlock(cnn_channel*2, type='cnn'),
-
-            nn.Conv2d(cnn_channel*2, 4, 1, 1),
+            nn.Conv2d(cnn_channel, 4, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
@@ -170,18 +166,16 @@ class Network(nn.Module):
         )
 
         self.pos_encoder = nn.Sequential(
-            nn.Linear(pos_dim, pos_latent_dim),
+            nn.Linear(config.pos_shape[0], pos_latent_dim),
             nn.ReLU(True),
 
             ResBlock(pos_latent_dim)
         )
 
-        self.concat_encoder = ResBlock(self.latent_dim)
-        
-        # nn.Sequential(
-        #     ResBlock(self.latent_dim), 
-        #     ResBlock(self.latent_dim),
-        # )
+        self.concat_encoder = nn.Sequential(
+            ResBlock(self.latent_dim), 
+            ResBlock(self.latent_dim),
+        )
 
         self.recurrent = nn.GRUCell(self.latent_dim, self.latent_dim)
 

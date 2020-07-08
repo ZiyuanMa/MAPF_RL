@@ -138,10 +138,10 @@ class LocalBuffer:
         self.map_len = map_len
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.uint8)
+        self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.int16)
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
-        self.hid_buf = np.zeros((size, self.num_agents, 256), dtype=np.float32)
+        self.hid_buf = np.zeros((size, self.num_agents, config.latent_dim), dtype=np.float32)
         self.comm_mask = np.zeros((size+1, self.num_agents, self.num_agents), dtype=np.bool)
 
         if config.distributional:
