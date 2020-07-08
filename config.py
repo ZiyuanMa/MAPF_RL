@@ -25,7 +25,7 @@ save_interval=2000
 gamma=0.99
 batch_size=128
 learning_starts=50000
-target_network_update_freq=2000
+target_network_update_freq=1250
 save_path='./models'
 max_steps = 256
 bt_steps = 10
@@ -61,4 +61,6 @@ pass_rate = 0.9
 # dqn network setting
 cnn_channel = 64
 obs_latent_dim = 240
-pos_latent_dim = 16
+pos_latent_dim = 12
+act_latent_dim = 4
+latent_dim = obs_latent_dim+pos_latent_dim+act_latent_dim

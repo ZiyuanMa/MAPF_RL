@@ -78,20 +78,26 @@ class Network(nn.Module):
             ResBlock(pos_latent_dim),
         )
 
-        self.concat_encoder = nn.Sequential(
-            ResBlock(self.latent_dim),
-            ResBlock(self.latent_dim),
+        self.act_encoder = nn.Sequential(
+            nn.Linear(5, config.act_latent_dim),
+            nn.ReLU(True),
+            ResBlock(config.act_latent_dim),
         )
 
-        self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
+        self.concat_encoder = nn.Sequential(
+            ResBlock(config.latent_dim),
+            ResBlock(config.latent_dim),
+        )
+
+        self.recurrent = nn.GRU(config.latent_dim, config.latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
-            self.adv = nn.Linear(self.latent_dim, 5*self.num_quant)
-            self.state = nn.Linear(self.latent_dim, 1*self.num_quant)
+            self.adv = nn.Linear(config.latent_dim, 5*self.num_quant)
+            self.state = nn.Linear(config.latent_dim, 1*self.num_quant)
         else:
-            self.adv = nn.Linear(self.latent_dim, 5)
-            self.state = nn.Linear(self.latent_dim, 1)
+            self.adv = nn.Linear(config.latent_dim, 5)
+            self.state = nn.Linear(config.latent_dim, 1)
 
         self.hidden = None
 
@@ -101,11 +107,13 @@ class Network(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     @torch.no_grad()
-    def step(self, obs, pos):
+    def step(self, obs, pos, act):
         # print(obs.shape)
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
+        act_latent = self.act_encoder(act)
+
+        concat_latent = torch.cat((obs_latent, pos_latent, act_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
         latent = latent.unsqueeze(1)
         self.recurrent.flatten_parameters()
@@ -138,25 +146,26 @@ class Network(nn.Module):
     def reset(self):
         self.hidden = None
 
-    def bootstrap(self, obs, pos, steps, hidden):
+    def bootstrap(self, obs, pos, act, steps, hidden):
         batch_size = obs.size(0)
         step = obs.size(1)
         hidden = hidden.unsqueeze(0)
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
         pos = pos.contiguous().view(-1, self.pos_dim)
-
+        act = act.contiguous().view(-1, 5)
 
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
+        act_latent = self.act_encoder(act)
 
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
+        concat_latent = torch.cat((obs_latent, pos_latent, act_latent), dim=1)
         latent = self.concat_encoder(concat_latent)
 
         # latent = latent.split(steps)
         # latent = pad_sequence(latent, batch_first=True)
 
-        latent = latent.view(batch_size, step, self.latent_dim)
+        latent = latent.view(batch_size, step, config.latent_dim)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 

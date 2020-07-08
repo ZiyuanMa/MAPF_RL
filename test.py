@@ -95,7 +95,7 @@ def test_model(test_case='test1_50.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 4000
+    model_name = 62000
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -115,13 +115,15 @@ def test_model(test_case='test1_50.pkl'):
             done = False
             network.reset()
 
+            act_embed = torch.zeros((env.num_agents, 5), dtype=torch.float32)
+
             while not done and env.steps < config.max_steps:
                 if i == case and show and env.steps < show_steps:
                     env.render()
 
                 obs_pos = env.observe()
 
-                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
+                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]), act_embed)
 
                 if i == case and show and env.steps < show_steps:
                     print(q_vals)
@@ -131,7 +133,10 @@ def test_model(test_case='test1_50.pkl'):
 
                 _, _, done, _ = env.step(actions)
                 # print(done)
-
+                act_embed = torch.zeros((env.num_agents, 5), dtype=torch.float32)
+                for i, act_id in enumerate(actions):
+                    act_embed[i, act_id] = 1
+                    
             steps.append(env.steps)
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
