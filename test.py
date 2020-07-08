@@ -85,7 +85,7 @@ def test_model(test_case='test1_50.pkl'):
     network.eval()
     network.to(device)
 
-    write_log = True
+    write_log = False
     title = 'standard reward'
     if write_log and title is not None:
         with open("test_log.txt","a") as f:
@@ -134,8 +134,8 @@ def test_model(test_case='test1_50.pkl'):
                 _, _, done, _ = env.step(actions)
                 # print(done)
                 act_embed = torch.zeros((env.num_agents, 5), dtype=torch.float32)
-                for i, act_id in enumerate(actions):
-                    act_embed[i, act_id] = 1
+                for agent_id, act_id in enumerate(actions):
+                    act_embed[agent_id, act_id] = 1
                     
             steps.append(env.steps)
 
