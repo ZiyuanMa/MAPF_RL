@@ -52,14 +52,14 @@ double_q = False
 # adaptive learning
 init_set = (1, 10)
 max_num_agetns = 8
-max_map_lenght = 50
+max_map_lenght = 45
 pass_rate = 0.9
 
 # dqn network setting
 cnn_channel = 64
 obs_dim = 2
 obs_latent_dim = 240
-pos_dim = 4
+pos_dim = 2
 pos_latent_dim = 16
 latent_dim = obs_latent_dim+pos_latent_dim
 
