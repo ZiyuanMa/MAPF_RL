@@ -35,7 +35,7 @@ class GlobalBuffer:
         self.pos_buf = np.zeros(((config.max_steps+1)*capacity, *config.pos_shape), dtype=np.int16)
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
-        self.hid_buf = np.zeros((config.max_steps*capacity, config.latent_dim), dtype=np.float32)
+        self.hid_buf = np.zeros((config.max_steps*capacity, config.obs_latent_dim+config.act_latent_dim), dtype=np.float32)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
 
@@ -101,7 +101,7 @@ class GlobalBuffer:
 
     def sample_batch(self, batch_size:int) -> Tuple:
 
-        b_obs, b_pos, b_act, b_action, b_reward, b_done, b_steps, b_bt_steps, = [], [], [], [], [], [], [], []
+        b_obs, b_pos, b_next_pos, b_act, b_action, b_reward, b_done, b_steps, b_bt_steps, = [], [], [], [], [], [], [], [], []
         idxes, priorities = [], []
         b_hidden = []
 
@@ -120,12 +120,11 @@ class GlobalBuffer:
                 # print(idx+global_idx-bt_steps+1)
                 # print(idx+global_idx+1+steps)
                 obs = self.obs_buf[idx+global_idx-bt_steps+1:idx+global_idx+1+steps]
-                pos = self.pos_buf[idx+global_idx-bt_steps+1:idx+global_idx+1+steps]
                 act = np.zeros((steps+bt_steps, 5))
                 act[np.arange(steps+bt_steps-1)+1, self.act_buf[idx-bt_steps+1:idx+steps]] = 1
 
                 if local_idx <= config.bt_steps-1:
-                    hidden = np.zeros(256, dtype=np.float32)
+                    hidden = np.zeros(config.obs_latent_dim+config.act_latent_dim, dtype=np.float32)
                 else:
                     hidden = self.hid_buf[idx-config.bt_steps-1]
                     act[0, self.act_buf[idx-bt_steps]] = 1
@@ -133,10 +132,11 @@ class GlobalBuffer:
                 if obs.shape[0] < config.bt_steps+config.forward_steps:
                     pad_len = config.bt_steps+config.forward_steps-obs.shape[0]
                     obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
-                    pos = np.pad(pos, ((0,pad_len),(0,0)))
                     act = np.pad(act, ((0,pad_len),(0,0)))
 
                 action = self.act_buf[idx]
+                pos = self.pos_buf[idx]
+                next_pos = self.pos_buf[idx+steps]
                 reward = 0
                 for i in range(steps):
                     reward += self.rew_buf[idx+i]*0.99**i
@@ -148,6 +148,7 @@ class GlobalBuffer:
                 
                 b_obs.append(obs)
                 b_pos.append(pos)
+                b_next_pos.append(next_pos)
                 b_act.append(act)
                 b_action.append(action)
                 b_reward.append(reward)
@@ -165,6 +166,7 @@ class GlobalBuffer:
             data = (
                 torch.from_numpy(np.stack(b_obs).astype(np.float32)),
                 torch.from_numpy(np.stack(b_pos).astype(np.float32)),
+                torch.from_numpy(np.stack(b_next_pos).astype(np.float32)),
                 torch.from_numpy(np.stack(b_act).astype(np.float32)),
                 torch.LongTensor(b_action).unsqueeze(1),
                 torch.FloatTensor(b_reward).unsqueeze(1),
@@ -286,8 +288,8 @@ class Learner:
                 data_id = ray.get(self.buffer.get_data.remote())
                 data = ray.get(data_id)
     
-                b_obs, b_pos, b_act, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, idxes, weights, old_ptr = data
-                b_obs, b_pos, b_act, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_act.to(self.device), b_action.to(self.device), b_reward.to(self.device)
+                b_obs, b_pos, b_next_pos, b_act, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, idxes, weights, old_ptr = data
+                b_obs, b_pos, b_next_pos, b_act, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_next_pos.to(self.device), b_act.to(self.device), b_action.to(self.device), b_reward.to(self.device)
                 b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
                 b_hidden = b_hidden.to(self.device)
 
@@ -322,9 +324,9 @@ class Learner:
                             b_action_ = self.model.bootstrap(b_obs, b_pos, b_act, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
                             b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_act, b_next_bt_steps, b_hidden).gather(1, b_action_)
                         else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_act, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_pos, b_act, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
 
-                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_pos[:, :-config.forward_steps], b_act[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_pos, b_act[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 

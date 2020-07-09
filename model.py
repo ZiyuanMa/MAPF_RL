@@ -63,6 +63,8 @@ class Network(nn.Module):
 
             ResBlock(cnn_channel, type='cnn'),
 
+            ResBlock(cnn_channel, type='cnn'),
+
             nn.Conv2d(cnn_channel, 4, 1, 1),
             nn.ReLU(True),
 
@@ -89,7 +91,7 @@ class Network(nn.Module):
             ResBlock(config.latent_dim),
         )
 
-        self.recurrent = nn.GRU(config.latent_dim, config.latent_dim, batch_first=True)
+        self.recurrent = nn.GRU(config.obs_latent_dim+config.act_latent_dim, config.obs_latent_dim+config.act_latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
@@ -113,18 +115,20 @@ class Network(nn.Module):
         pos_latent = self.pos_encoder(pos)
         act_latent = self.act_encoder(act)
 
-        concat_latent = torch.cat((obs_latent, pos_latent, act_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
+        latent = torch.cat((obs_latent, act_latent), dim=1)
         latent = latent.unsqueeze(1)
         self.recurrent.flatten_parameters()
         if self.hidden is None:
             _, self.hidden = self.recurrent(latent)
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
-        self.hidden = torch.squeeze(self.hidden, dim=0)
+        hidden = torch.squeeze(self.hidden, dim=0)
 
-        adv_val = self.adv(self.hidden)
-        state_val = self.state(self.hidden)
+        hidden = torch.cat((hidden, pos_latent), dim=1)
+
+        hidden = self.concat_encoder(hidden)
+        adv_val = self.adv(hidden)
+        state_val = self.state(hidden)
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
@@ -138,8 +142,6 @@ class Network(nn.Module):
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
             # print(q_val.shape)
             actions = torch.argmax(q_val, 1).tolist()
-
-        self.hidden = self.hidden.unsqueeze(0)
 
         return actions, q_val.numpy(), self.hidden[0].numpy()
 
@@ -159,20 +161,23 @@ class Network(nn.Module):
         pos_latent = self.pos_encoder(pos)
         act_latent = self.act_encoder(act)
 
-        concat_latent = torch.cat((obs_latent, pos_latent, act_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
+        obs_act_latent = torch.cat((obs_latent, act_latent), dim=1)
 
         # latent = latent.split(steps)
         # latent = pad_sequence(latent, batch_first=True)
 
-        latent = latent.view(batch_size, step, config.latent_dim)
+        obs_act_latent = obs_act_latent.view(batch_size, step, config.obs_latent_dim+config.act_latent_dim)
 
-        latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
+        obs_act_latent = pack_padded_sequence(obs_act_latent, steps, batch_first=True, enforce_sorted=False)
 
         self.recurrent.flatten_parameters()
-        _, hidden = self.recurrent(latent, hidden)
+        _, hidden = self.recurrent(obs_act_latent, hidden)
 
         hidden = torch.squeeze(hidden)
+
+        hidden = torch.cat((hidden, pos_latent), dim=1)
+
+        hidden = self.concat_encoder(hidden)
         
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
