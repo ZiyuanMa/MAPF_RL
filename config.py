@@ -12,7 +12,7 @@ reward_fn = dict(move=-0.075,
                 finish=3)
 
 obs_shape = (2,9,9)
-pos_shape = (4,)
+pos_shape = (2,)
 
 
 ############################################################
@@ -54,8 +54,8 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 1
-max_map_lenght = 30
+max_num_agetns = 6
+max_map_lenght = 20
 pass_rate = 0.9
 
 # dqn network setting

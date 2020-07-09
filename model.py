@@ -59,15 +59,11 @@ class Network(nn.Module):
             nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
             nn.ReLU(True),
 
-            nn.Conv2d(cnn_channel, cnn_channel, 3, 1, 1),
-            nn.ReLU(True),
+            ResBlock(cnn_channel, type='cnn'),
 
-            nn.Conv2d(cnn_channel, cnn_channel*2, 3, 1, 1),
-            nn.ReLU(True),
+            ResBlock(cnn_channel, type='cnn'),
 
-            ResBlock(cnn_channel*2, type='cnn'),
-
-            nn.Conv2d(cnn_channel*2, 4, 1, 1),
+            nn.Conv2d(cnn_channel, 4, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
@@ -82,8 +78,10 @@ class Network(nn.Module):
             ResBlock(pos_latent_dim),
         )
 
-        self.concat_encoder = ResBlock(self.latent_dim)
-
+        self.concat_encoder = nn.Sequential(
+            ResBlock(self.latent_dim),
+            ResBlock(self.latent_dim),
+        )
         self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
 
         # dueling q structure
