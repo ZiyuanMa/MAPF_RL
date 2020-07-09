@@ -63,6 +63,8 @@ class Network(nn.Module):
 
             ResBlock(cnn_channel, type='cnn'),
 
+            ResBlock(cnn_channel, type='cnn'),
+
             nn.Conv2d(cnn_channel, 4, 1, 1),
             nn.ReLU(True),
 

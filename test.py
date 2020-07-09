@@ -79,13 +79,13 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test1_50.pkl'):
+def test_model(test_case='test4_10.pkl'):
 
     network = Network()
     network.eval()
     network.to(device)
 
-    write_log = True
+    write_log = False
     title = 'standard reward'
     if write_log and title is not None:
         with open("test_log.txt","a") as f:
@@ -95,14 +95,14 @@ def test_model(test_case='test1_50.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 4000
+    model_name = 114000
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 30
-        show = False
+        case = 1
+        show = True
         show_steps = 100
 
         fail = 0
@@ -229,7 +229,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(8, 20)
+    # create_test(4, 10)
     test_model()
     # make_animation()
     # create_test(1, 20)
