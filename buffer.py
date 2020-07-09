@@ -140,11 +140,7 @@ class LocalBuffer:
         self.rew_buf = np.zeros((size), dtype=np.float32)
         self.hid_buf = np.zeros((size, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
 
-        if config.distributional:
-            # quantile values
-            self.q_buf = np.zeros((size+1, 5, 200), dtype=np.float32)
-        else:
-            self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
+        self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
 
         self.capacity = size
         self.size = 0
@@ -221,24 +217,10 @@ class LocalBuffer:
         self.td_errors = np.zeros(self.capacity, dtype=np.float64)
 
 
-        if config.distributional:
-            raise NotImplementedError
-            # for i in range(self.size):
-            #     next_dist = self.q_buf[i+1, 0]
-            #     next_q = np.mean(next_dist, axis=1)
-            #     next_action = np.argmax(next_q)
-            #     next_dist = next_dist[next_action]
-
-            #     target_dist = self.rew_buf[i, 0]+0.99*next_dist
-
-            #     curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
-
-            #     self.td_errors[i] = quantile_huber_loss(curr_dist, target_dist)
-        else:
-            q_max = np.max(self.q_buf[:self.size], axis=1)
-            ret = self.rew_buf.tolist() + [ 0 for _ in range(config.forward_steps-1)]
-            reward = np.convolve(ret, [0.99**(config.forward_steps-1-i) for i in range(config.forward_steps)],'valid')+q_max
-            q_val = self.q_buf[np.arange(self.size), self.act_buf]
-            self.td_errors[:self.size] = np.abs(reward-q_val)
+        q_max = np.max(self.q_buf[:self.size], axis=1)
+        ret = self.rew_buf.tolist() + [ 0 for _ in range(config.forward_steps-1)]
+        reward = np.convolve(ret, [0.99**(config.forward_steps-1-i) for i in range(config.forward_steps)],'valid')+q_max
+        q_val = self.q_buf[np.arange(self.size), self.act_buf]
+        self.td_errors[:self.size] = np.abs(reward-q_val)
 
         return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.pos_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size

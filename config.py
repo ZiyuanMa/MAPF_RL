@@ -40,7 +40,7 @@ actor_update_steps = 400
 grad_norm_dqn=40
 
 # n-step forward
-forward_steps = 2
+forward_steps = 1
 
 # distributional dqn
 distributional = False
