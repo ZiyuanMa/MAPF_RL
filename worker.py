@@ -135,8 +135,8 @@ class GlobalBuffer:
                     act = np.pad(act, ((0,pad_len),(0,0)))
 
                 action = self.act_buf[idx]
-                pos = self.pos_buf[idx]
-                next_pos = self.pos_buf[idx+steps]
+                pos = self.pos_buf[idx+global_idx]
+                next_pos = self.pos_buf[idx+global_idx+steps]
                 reward = 0
                 for i in range(steps):
                     reward += self.rew_buf[idx+i]*0.99**i
