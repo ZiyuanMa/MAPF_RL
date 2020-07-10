@@ -86,10 +86,8 @@ class Network(nn.Module):
             ResBlock(config.act_latent_dim),
         )
 
-        self.concat_encoder = nn.Sequential(
-            ResBlock(config.latent_dim),
-            ResBlock(config.latent_dim),
-        )
+        self.linear1 = ResBlock(config.obs_latent_dim+config.act_latent_dim)
+        self.linear2 = ResBlock(config.latent_dim)
 
         self.recurrent = nn.GRU(config.obs_latent_dim+config.act_latent_dim, config.obs_latent_dim+config.act_latent_dim, batch_first=True)
 
@@ -116,6 +114,7 @@ class Network(nn.Module):
         act_latent = self.act_encoder(act)
 
         latent = torch.cat((obs_latent, act_latent), dim=1)
+        latent = self.linear1(latent)
         latent = latent.unsqueeze(1)
         self.recurrent.flatten_parameters()
         if self.hidden is None:
@@ -126,7 +125,7 @@ class Network(nn.Module):
 
         hidden = torch.cat((hidden, pos_latent), dim=1)
 
-        hidden = self.concat_encoder(hidden)
+        hidden = self.linear2(hidden)
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
@@ -174,10 +173,11 @@ class Network(nn.Module):
         _, hidden = self.recurrent(obs_act_latent, hidden)
 
         hidden = torch.squeeze(hidden)
+        hidden = self.linear1(hidden)
 
         hidden = torch.cat((hidden, pos_latent), dim=1)
 
-        hidden = self.concat_encoder(hidden)
+        hidden = self.linear2(hidden)
         
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
