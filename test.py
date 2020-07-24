@@ -79,7 +79,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test4_10.pkl'):
+def test_model(test_case='test8_20.pkl'):
 
     network = Network()
     network.eval()
@@ -95,14 +95,14 @@ def test_model(test_case='test4_10.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 114000
+    model_name = 200000
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 1
-        show = True
+        case = 2
+        show = False
         show_steps = 100
 
         fail = 0
@@ -121,13 +121,13 @@ def test_model(test_case='test4_10.pkl'):
 
                 obs_pos = env.observe()
 
-                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
+                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos))
 
                 if i == case and show and env.steps < show_steps:
+                    print(obs_pos[0, 3:7, 4, 4])
                     print(q_vals)
-
-                if i == case and show and env.steps < show_steps:
                     print(actions)
+
 
                 _, _, done, _ = env.step(actions)
                 # print(done)
@@ -229,7 +229,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(4, 10)
+    # create_test(1, 70)
     test_model()
     # make_animation()
     # create_test(1, 20)

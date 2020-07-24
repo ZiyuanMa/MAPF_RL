@@ -32,10 +32,9 @@ class GlobalBuffer:
         self.level = ray.put([config.init_set])
 
         self.obs_buf = np.zeros(((config.max_steps+1)*capacity, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros(((config.max_steps+1)*capacity, *config.pos_shape), dtype=np.int16)
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
-        self.hid_buf = np.zeros((config.max_steps*capacity, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
+        self.hid_buf = np.zeros((config.max_steps*capacity, config.latent_dim), dtype=np.float32)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
 
@@ -67,16 +66,16 @@ class GlobalBuffer:
 
 
     def add(self, data:Tuple):
-        # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size
+        # actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, td_errors 7, done 8, size 9
         if data[0] >= 10:
             stat_key = (data[1], data[2])
 
             if stat_key in self.stat_dict:
                 if len(self.stat_dict[stat_key]) < 200:
-                    self.stat_dict[stat_key].append(data[9])
+                    self.stat_dict[stat_key].append(data[8])
                 else:
                     self.stat_dict[stat_key].pop(0)
-                    self.stat_dict[stat_key].append(data[9])
+                    self.stat_dict[stat_key].append(data[8])
 
         with self.lock:
             
@@ -84,24 +83,23 @@ class GlobalBuffer:
             start_idx = self.ptr*config.max_steps
             # update buffer size
             self.size -= self.size_buf[self.ptr].item()
-            self.size += data[10]
-            self.counter += data[10]
+            self.size += data[9]
+            self.counter += data[9]
 
-            self.priority_tree.batch_update(idxes, data[8]**self.alpha)
+            self.priority_tree.batch_update(idxes, data[7]**self.alpha)
 
-            self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1] = data[3]
-            self.pos_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1] = data[4]
-            self.act_buf[start_idx:start_idx+data[10]] = data[5]
-            self.rew_buf[start_idx:start_idx+data[10]] = data[6]
-            self.hid_buf[start_idx:start_idx+data[10]] = data[7]
-            self.done_buf[self.ptr] = data[9]
-            self.size_buf[self.ptr] = data[10]
+            self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+data[9]+1] = data[3]
+            self.act_buf[start_idx:start_idx+data[9]] = data[4]
+            self.rew_buf[start_idx:start_idx+data[9]] = data[5]
+            self.hid_buf[start_idx:start_idx+data[9]] = data[6]
+            self.done_buf[self.ptr] = data[8]
+            self.size_buf[self.ptr] = data[9]
 
             self.ptr = (self.ptr+1) % self.capacity
 
     def sample_batch(self, batch_size:int) -> Tuple:
 
-        b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, = [], [], [], [], [], [], []
+        b_obs, b_action, b_reward, b_done, b_steps, b_bt_steps, = [], [], [], [], [], []
         idxes, priorities = [], []
         b_hidden = []
 
@@ -120,17 +118,15 @@ class GlobalBuffer:
                 # print(idx+global_idx-bt_steps+1)
                 # print(idx+global_idx+1+steps)
                 obs = self.obs_buf[idx+global_idx-bt_steps+1:idx+global_idx+1+steps]
-                pos = self.pos_buf[idx+global_idx-bt_steps+1:idx+global_idx+1+steps]
 
                 if local_idx <= config.bt_steps-1:
-                    hidden = np.zeros(256, dtype=np.float32)
+                    hidden = np.zeros(config.latent_dim, dtype=np.float32)
                 else:
                     hidden = self.hid_buf[idx-config.bt_steps-1]
                 
                 if obs.shape[0] < config.bt_steps+config.forward_steps:
                     pad_len = config.bt_steps+config.forward_steps-obs.shape[0]
                     obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
-                    pos = np.pad(pos, ((0,pad_len),(0,0)))
 
                 action = self.act_buf[idx]
                 reward = 0
@@ -143,7 +139,6 @@ class GlobalBuffer:
                     done = False
                 
                 b_obs.append(obs)
-                b_pos.append(pos)
                 b_action.append(action)
                 b_reward.append(reward)
 
@@ -159,7 +154,6 @@ class GlobalBuffer:
 
             data = (
                 torch.from_numpy(np.stack(b_obs).astype(np.float32)),
-                torch.from_numpy(np.stack(b_pos).astype(np.float32)),
                 torch.LongTensor(b_action).unsqueeze(1),
                 torch.FloatTensor(b_reward).unsqueeze(1),
 
@@ -274,38 +268,41 @@ class Learner:
         self.learning_thread.start()
 
     def train(self):
+        batch_idx = torch.arange(config.batch_size)
         while not ray.get(self.buffer.check_done.remote()):
             for i in range(1, 10001):
 
                 data_id = ray.get(self.buffer.get_data.remote())
                 data = ray.get(data_id)
     
-                b_obs, b_pos, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, idxes, weights, old_ptr = data
-                b_obs, b_pos, b_action, b_reward = b_obs.to(self.device), b_pos.to(self.device), b_action.to(self.device), b_reward.to(self.device)
+                b_obs, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, idxes, weights, old_ptr = data
+                b_obs, b_action, b_reward = b_obs.to(self.device), b_action.to(self.device), b_reward.to(self.device)
                 b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
                 b_hidden = b_hidden.to(self.device)
 
                 b_next_bt_steps = [ bt_steps+steps.item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
 
                 if config.distributional:
-                    raise NotImplementedError
-                    # with torch.no_grad():
-                    #     b_next_dist = self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden)
-                    #     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
-                    #     b_next_dist = b_next_dist[batch_idx, b_next_action, :]
 
-                    # b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_hidden)
-                    # b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
+                    with torch.no_grad():
+                        b_next_dist = self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden)
+                        b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
+                        b_next_dist = b_next_dist[batch_idx, b_next_action, :]
 
-                    # b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
+                    b_dist = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden)
+                    b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
 
-                    # # batch_size * N * 1
-                    # b_dist = b_dist.unsqueeze(2)
-                    # # batch_size * 1 * N
-                    # b_target_dist = b_target_dist.unsqueeze(1)
+                    b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
 
-                    # td_errors = b_target_dist-b_dist
-                    # priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
+
+                    priorities = (b_target_dist.mean(1)-b_dist.mean(1)).detach().squeeze().abs().cpu().clamp(1e-6).numpy()
+                    # batch_size * N * 1
+                    b_dist = b_dist.unsqueeze(2)
+                    # batch_size * 1 * N
+                    b_target_dist = b_target_dist.unsqueeze(1)
+
+                    td_errors = b_target_dist-b_dist
+                    _, loss = self.quantile_huber_loss(td_errors, weights=weights)
 
                 else:
                     # print(b_next_bt_steps)
@@ -313,12 +310,12 @@ class Learner:
                         # choose max q index from next observation
                         # double q-learning
                         if config.double_q:
-                            b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).gather(1, b_action_)
+                            b_action_ = self.model.bootstrap(b_obs, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden).gather(1, b_action_)
                         else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
+                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
 
-                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_pos[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
@@ -351,6 +348,8 @@ class Learner:
                 # update target net, save model
                 if i % config.target_network_update_freq == 0:
                     self.tar_model.load_state_dict(self.model.state_dict())
+                
+                if i % config.save_interval == 0:
                     torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(self.counter)))
                 
                 # if i == 10000:
@@ -373,7 +372,7 @@ class Learner:
         batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
         assert batch_quantile_huber_loss.shape == (config.batch_size, 1)
 
-        priorities = batch_quantile_huber_loss.detach().cpu().clamp(1e-6).numpy()
+        priorities = batch_quantile_huber_loss.detach().cpu().squeeze().clamp(1e-6).numpy()
 
         if weights is not None:
             quantile_huber_loss = (batch_quantile_huber_loss * weights).mean()
@@ -407,34 +406,34 @@ class Actor:
         """ Generate training batch sample """
         done = False
 
-        obs_pos, local_buffer = self.reset()
+        obs, local_buffer = self.reset()
 
         while True:
 
             # sample action
             # Note: q_val is quantile values if it's distributional
-            actions, q_val, hidden = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
+            actions, q_val, hidden = self.model.step(torch.from_numpy(obs.astype(np.float32)))
 
             if random.random() < self.epsilon:
                 # Note: only one agent can do random action in order to make the whole environment more stable
                 actions[0] = np.random.randint(0, 5)
 
             # take action in env
-            next_obs_pos, r, done, _ = self.env.step(actions)
+            next_obs, r, done, _ = self.env.step(actions)
 
             # return data and update observation
-            local_buffer.add(q_val[0], actions[0], r[0], (next_obs_pos[0][0], next_obs_pos[1][0]), hidden[0])
+            local_buffer.add(q_val[0], actions[0], r[0], next_obs[0], hidden[0])
 
             if done == False and self.env.steps < self.max_steps:
 
-                obs_pos = next_obs_pos 
+                obs = next_obs
             else:
                 # finish and send buffer
                 if done:
                     data = local_buffer.finish()
                 else:
 
-                    _, q_val, _ = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
+                    _, q_val, _ = self.model.step(torch.from_numpy(obs.astype(np.float32)))
 
                     data = local_buffer.finish(q_val[0])
 
@@ -442,7 +441,7 @@ class Actor:
 
                 done = False
 
-                obs_pos, local_buffer = self.reset()
+                obs, local_buffer = self.reset()
 
             self.counter += 1
             if self.counter == config.actor_update_steps:
@@ -458,8 +457,8 @@ class Actor:
     def reset(self):
         self.model.reset()
         level_id = ray.get(self.global_buffer.get_level.remote())
-        obs_pos = self.env.reset(ray.get(level_id))
-        local_buffer = LocalBuffer(self.id, self.env.num_agents, self.env.map_size[0], (obs_pos[0][0], obs_pos[1][0]))
+        obs = self.env.reset(ray.get(level_id))
+        local_buffer = LocalBuffer(self.id, self.env.num_agents, self.env.map_size[0], obs[0])
 
-        return obs_pos, local_buffer
+        return obs, local_buffer
 

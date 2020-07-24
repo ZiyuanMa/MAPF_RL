@@ -5,21 +5,21 @@ from torch.nn.utils.rnn import pack_padded_sequence
 import config
 
 class ResBlock(nn.Module):
-    def __init__(self, channel, type='linear', bn=False):
+    def __init__(self, channel, a=3, b=1, c=1, type='linear', bn=False):
         super().__init__()
         if type == 'cnn':
             if bn:
                 self.block1 = nn.Sequential(
-                    nn.Conv2d(channel, channel, 3, 1, 1, bias=False),
+                    nn.Conv2d(channel, channel, a, b, c, bias=False),
                     nn.BatchNorm2d(channel)
                 )
                 self.block2 = nn.Sequential(
-                    nn.Conv2d(channel, channel, 3, 1, 1, bias=False),
+                    nn.Conv2d(channel, channel, a, b, c, bias=False),
                     nn.BatchNorm2d(channel)
                 )
             else:
-                self.block1 = nn.Conv2d(channel, channel, 3, 1, 1)
-                self.block2 = nn.Conv2d(channel, channel, 3, 1, 1)
+                self.block1 = nn.Conv2d(channel, channel, a, b, c)
+                self.block2 = nn.Conv2d(channel, channel, a, b, c)
 
         elif type == 'linear':
             self.block1 = nn.Linear(channel, channel)
@@ -43,48 +43,34 @@ class ResBlock(nn.Module):
 
 class Network(nn.Module):
     def __init__(self, cnn_channel=config.cnn_channel,
-                obs_dim=config.obs_shape[0], obs_latent_dim=config.obs_latent_dim,
-                pos_dim=config.pos_shape[0], pos_latent_dim=config.pos_latent_dim,
                 distributional=config.distributional):
 
         super().__init__()
 
-        self.obs_dim = obs_dim
-        self.pos_dim = pos_dim
-        self.latent_dim = obs_latent_dim + pos_latent_dim
+        self.obs_dim = config.obs_shape[0]
+        self.latent_dim = config.latent_dim
         self.distributional = distributional
         self.num_quant = 200
+        self.output_shape = (64, 5, 5)
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
+            nn.Conv2d(self.obs_dim, 128, 3, 1),
             nn.ReLU(True),
 
-            ResBlock(cnn_channel, type='cnn'),
+            ResBlock(128, type='cnn'),
 
-            ResBlock(cnn_channel, type='cnn'),
+            ResBlock(128, type='cnn'),
 
-            ResBlock(cnn_channel, type='cnn'),
+            ResBlock(128, type='cnn'),
 
-            nn.Conv2d(cnn_channel, 4, 1, 1),
+            nn.Conv2d(128, 16, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
 
-            nn.Linear(4*9*9, obs_latent_dim),
-            nn.ReLU(True),
         )
 
-        self.pos_encoder = nn.Sequential(
-            nn.Linear(pos_dim, pos_latent_dim),
-            nn.ReLU(True),
-            ResBlock(pos_latent_dim),
-        )
-
-        self.concat_encoder = nn.Sequential(
-            ResBlock(self.latent_dim),
-            ResBlock(self.latent_dim),
-        )
-        self.recurrent = nn.GRU(self.latent_dim, self.latent_dim, batch_first=True)
+        self.recurrent = nn.GRU(16*7*7, self.latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
@@ -99,15 +85,13 @@ class Network(nn.Module):
         for _, m in self.named_modules():
             if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
-                nn.init.constant_(m.bias, 0)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
     @torch.no_grad()
-    def step(self, obs, pos):
+    def step(self, obs):
         # print(obs.shape)
-        obs_latent = self.obs_encoder(obs)
-        pos_latent = self.pos_encoder(pos)
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
+        latent = self.obs_encoder(obs)
         latent = latent.unsqueeze(1)
         self.recurrent.flatten_parameters()
         if self.hidden is None:
@@ -123,9 +107,9 @@ class Network(nn.Module):
             adv_val = adv_val.view(-1, 5, self.num_quant)
             state_val = state_val.unsqueeze(1)
             # batch_size x 5 x 200
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+            q_val = (state_val + adv_val - adv_val.mean(1, keepdim=True)).mean(2)
 
-            actions = q_val.mean(2).argmax(1).tolist()
+            actions = q_val.argmax(1).tolist()
 
         else:
             q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
@@ -139,25 +123,16 @@ class Network(nn.Module):
     def reset(self):
         self.hidden = None
 
-    def bootstrap(self, obs, pos, steps, hidden):
+    def bootstrap(self, obs, steps, hidden):
         batch_size = obs.size(0)
         step = obs.size(1)
         hidden = hidden.unsqueeze(0)
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
-        pos = pos.contiguous().view(-1, self.pos_dim)
 
+        latent = self.obs_encoder(obs)
 
-        obs_latent = self.obs_encoder(obs)
-        pos_latent = self.pos_encoder(pos)
-
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
-
-        # latent = latent.split(steps)
-        # latent = pad_sequence(latent, batch_first=True)
-
-        latent = latent.view(batch_size, step, self.latent_dim)
+        latent = latent.view(batch_size, step, 16*7*7)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 

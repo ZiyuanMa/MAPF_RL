@@ -123,9 +123,9 @@ class SumTree:
 
 
 class LocalBuffer:
-    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'hid_buf', 'q_buf',
+    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'act_buf', 'rew_buf', 'hid_buf', 'q_buf',
                     'capacity', 'size', 'done', 'td_errors')
-    def __init__(self, actor_id, num_agents, map_len, init_obs_pos, size=config.max_steps):
+    def __init__(self, actor_id, num_agents, map_len, init_obs, size=config.max_steps):
         """
         Prioritized Replay buffer for each actor
         """
@@ -135,65 +135,30 @@ class LocalBuffer:
         self.map_len = map_len
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.int16)
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
-        self.hid_buf = np.zeros((size, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
+        self.hid_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
 
         self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
 
         self.capacity = size
         self.size = 0
 
-        self.obs_buf[0], self.pos_buf[0] = init_obs_pos
+        self.obs_buf[0] = init_obs
 
         # self.td_errors = np.zeros(size, dtype=np.float32)
     
     def __len__(self):
         return self.size
 
-    def __getitem__(self, idx:int):
-        assert idx < self.size
 
-        # self play
-        forward = 1
-        reward = self.rew_buf[idx]
-
-        if self.done and idx+forward == self.size:
-            done = True
-        else:
-            done = False
-
-        # obs and pos
-        bt_steps = min(idx+1, config.bt_steps)
-        obs = self.obs_buf[idx+1-bt_steps:idx+2]
-        pos = self.pos_buf[idx+1-bt_steps:idx+2]
-
-        if bt_steps < config.bt_steps:
-            pad_len = config.bt_steps-bt_steps
-            obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
-            pos = np.pad(pos, ((0,pad_len),(0,0)))
-
-
-        if idx == config.bt_steps:
-            hidden = np.zeros(256, dtype=np.float32)
-            next_hidden = self.hid_buf[0]
-        elif idx < config.bt_steps:
-            hidden = np.zeros(256, dtype=np.float32)
-            next_hidden = np.zeros(256, dtype=np.float32)
-        else:
-            hidden = self.hid_buf[idx-config.bt_steps-1]
-            next_hidden = self.hid_buf[idx-config.bt_steps]
-
-        return obs, pos, self.act_buf[idx], reward, done, forward, bt_steps, hidden, next_hidden
-
-    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs_pos:np.ndarray, hidden):
+    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs:np.ndarray, hidden):
 
         assert self.size < self.capacity
 
         self.act_buf[self.size] = action
         self.rew_buf[self.size] = reward
-        self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
+        self.obs_buf[self.size+1] = next_obs
         self.q_buf[self.size] = q_val
         self.hid_buf[self.size] = hidden
 
@@ -208,7 +173,6 @@ class LocalBuffer:
             self.q_buf[self.size] = last_q_val
         
         self.obs_buf = self.obs_buf[:self.size+1]
-        self.pos_buf = self.pos_buf[:self.size+1]
         self.act_buf = self.act_buf[:self.size]
         self.rew_buf = self.rew_buf[:self.size]
         self.hid_buf = self.hid_buf[:self.size]
@@ -223,4 +187,4 @@ class LocalBuffer:
         q_val = self.q_buf[np.arange(self.size), self.act_buf]
         self.td_errors[:self.size] = np.abs(reward-q_val)
 
-        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.pos_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size
+        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size

@@ -11,8 +11,7 @@ reward_fn = dict(move=-0.075,
                 collision=-0.5,
                 finish=3)
 
-obs_shape = (2,9,9)
-pos_shape = (2,)
+obs_shape = (6,9,9)
 
 
 ############################################################
@@ -28,7 +27,7 @@ learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 10
+bt_steps = 32
 load_model = None
 
 local_buffer_size = max_steps
@@ -40,7 +39,7 @@ actor_update_steps = 400
 grad_norm_dqn=40
 
 # n-step forward
-forward_steps = 1
+forward_steps = 2
 
 # distributional dqn
 distributional = False
@@ -54,11 +53,10 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 6
-max_map_lenght = 20
+max_num_agetns = 16
+max_map_lenght = 40
 pass_rate = 0.9
 
 # dqn network setting
 cnn_channel = 64
-obs_latent_dim = 240
-pos_latent_dim = 16
+latent_dim = 512
