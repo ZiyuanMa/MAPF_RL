@@ -38,7 +38,8 @@ class GlobalBuffer:
         self.pos_buf = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, *config.pos_shape), dtype=np.int16)
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
-        self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)
+        self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.latent_dim), dtype=np.float32)
+        self.cell_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.latent_dim), dtype=np.float32)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
         self.comm_mask = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, config.max_num_agetns), dtype=np.bool)
@@ -71,7 +72,7 @@ class GlobalBuffer:
 
 
     def add(self, buffer_list:List):
-        # actor_id, num_agents, map_len, obs_buf, pos_buf, act_buf, rew_buf, hid_buf, td_errors, done, size, comm_mask
+        # actor_id 0, num_agents 1, map_len 2, obs_buf 3, pos_buf 4, act_buf 5, rew_buf 6, hid_buf 7, cell_buf 8, td_errors 9, done 10, size 11, comm_mask 12
         for buffer in buffer_list:
             if buffer[0] >= 10:
                 stat_key = (buffer[1], buffer[2])
