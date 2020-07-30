@@ -80,7 +80,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test8_70.pkl'):
+def test_model(test_case='test16_70.pkl'):
 
     network = Network()
     network.eval()
@@ -96,7 +96,7 @@ def test_model(test_case='test8_70.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 290000
+    model_name = 390000
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -230,7 +230,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    create_test(16, 70)
-    # test_model()
+    # create_test(16, 70)
+    test_model()
     # make_animation()
     # create_test(1, 20)

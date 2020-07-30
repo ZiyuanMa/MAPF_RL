@@ -42,7 +42,8 @@ grad_norm_dqn=40
 forward_steps = 2
 
 # distributional dqn
-distributional = False
+distributional = True
+
 
 # prioritized replay
 prioritized_replay_alpha=0.6
