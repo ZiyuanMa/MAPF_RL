@@ -97,7 +97,7 @@ class Environment:
             self.map_size = (map_length, map_length)
 
         # set as same as in PRIMAL
-        self.obstacle_density = np.random.triangular(0, 0.15, 0.3)
+        self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
 
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int)
         
@@ -140,7 +140,7 @@ class Environment:
         self.obs_radius = obs_radius
 
         self.reward_fn = reward_fn
-
+        self.get_navi_map()
         self.steps = 0
 
     def reset(self, level=None, num_agents=None, map_length=None):
@@ -149,7 +149,7 @@ class Environment:
             rand = random.choice(level)
             self.num_agents = rand[0]
             self.map_size = (rand[1], rand[1])
-        else:
+        elif num_agents is not None:
             self.num_agents = num_agents
             self.map_size = (map_length, map_length)
 
@@ -192,7 +192,7 @@ class Environment:
             pos_num = sum([ len(partition) for partition in partition_list ])
 
         self.steps = 0
-
+        self.get_navi_map()
         return self.observe()
 
     def load(self, map:np.ndarray, agents_pos:np.ndarray, goals_pos:np.ndarray):
@@ -203,6 +203,7 @@ class Environment:
         self.goals_pos = np.copy(goals_pos)
 
         self.num_agents = agents_pos.shape[0]
+        self.map_size = (self.map.shape[0], self.map.shape[1])
 
         # self.history = [np.copy(self.agents_pos)]
         
@@ -210,6 +211,69 @@ class Environment:
 
         # self.fig = plt.figure()
         self.imgs = []
+
+        self.get_navi_map()
+
+    def get_navi_map(self):
+        dist_map = np.ones((self.num_agents, *self.map_size), dtype=np.int32)*2147483647
+        for i in range(self.num_agents):
+            open_list = list()
+            x, y = tuple(self.goals_pos[i])
+            open_list.append((x, y))
+            dist_map[i, x, y] = 0
+
+            while open_list:
+                x, y = open_list.pop(0)
+                dist = dist_map[i, x, y]
+
+                up = x-1, y
+                if up[0] >= 0 and self.map[up]==0 and dist_map[i, x-1, y] > dist+1:
+                    dist_map[i, x-1, y] = dist+1
+                    if up not in open_list:
+                        open_list.append(up)
+                
+                down = x+1, y
+                if down[0] < self.map_size[0] and self.map[down]==0 and dist_map[i, x+1, y] > dist+1:
+                    dist_map[i, x+1, y] = dist+1
+                    if down not in open_list:
+                        open_list.append(down)
+                
+                left = x, y-1
+                if left[1] >= 0 and self.map[left]==0 and dist_map[i, x, y-1] > dist+1:
+                    dist_map[i, x, y-1] = dist+1
+                    if left not in open_list:
+                        open_list.append(left)
+                
+                right = x, y+1
+                if right[1] < self.map_size[1] and self.map[right]==0 and dist_map[i, x, y+1] > dist+1:
+                    dist_map[i, x, y+1] = dist+1
+                    if right not in open_list:
+                        open_list.append(right)
+        
+        self.navi_map = np.zeros((self.num_agents, 4, *self.map_size), dtype=np.bool)
+
+        for x in range(self.map_size[0]):
+            for y in range(self.map_size[1]):
+                if self.map[x, y] == 0:
+                    for i in range(self.num_agents):
+
+                        if x > 0 and dist_map[i, x-1, y] < dist_map[i, x, y]:
+                            assert dist_map[i, x-1, y] == dist_map[i, x, y]-1
+                            self.navi_map[i, 0, x, y] = 1
+                        
+                        if x < self.map_size[0]-1 and dist_map[i, x+1, y] < dist_map[i, x, y]:
+                            assert dist_map[i, x+1, y] == dist_map[i, x, y]-1
+                            self.navi_map[i, 1, x, y] = 1
+
+                        if y > 0 and dist_map[i, x, y-1] < dist_map[i, x, y]:
+                            assert dist_map[i, x, y-1] == dist_map[i, x, y]-1
+                            self.navi_map[i, 2, x, y] = 1
+                        
+                        if y < self.map_size[1]-1 and dist_map[i, x, y+1] < dist_map[i, x, y]:
+                            assert dist_map[i, x, y+1] == dist_map[i, x, y]-1
+                            self.navi_map[i, 3, x, y] = 1
+
+        self.navi_map = np.pad(self.navi_map, ((0, 0), (0, 0), (self.obs_radius, self.obs_radius), (self.obs_radius, self.obs_radius)))
 
     def step(self, actions: List[int]):
         '''
@@ -377,13 +441,10 @@ class Environment:
         pos: vector of length 4, current agent position and goal position
 
         '''
-        obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
-        pos = np.zeros((self.num_agents, 2), dtype=np.int16)
-
-        pos = self.goals_pos.astype(np.int16) - self.agents_pos.astype(np.int16)
+        obs = np.zeros((self.num_agents, 6, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
 
         # 0 represents obstacle to match 0 padding in CNN 
-        obstacle_map = np.pad(self.map==0, self.obs_radius, 'constant', constant_values=0)
+        obstacle_map = np.pad(self.map, self.obs_radius, 'constant', constant_values=0)
 
         agent_map = np.zeros((self.map_size), dtype=np.bool)
         agent_map[self.agents_pos[:,0], self.agents_pos[:,1]] = 1
@@ -395,13 +456,15 @@ class Environment:
         for i, agent_pos in enumerate(self.agents_pos):
             x, y = agent_pos
 
-            obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
+            obs[i, 0] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
-            obs[i,1] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
+            obs[i, 0, self.obs_radius, self.obs_radius] = 0
 
-            obs[i,1,self.obs_radius,self.obs_radius] = 0
+            obs[i, 1] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
-        return obs, pos
+            obs[i, 2:] = self.navi_map[i, :, x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
+
+        return obs
     
     def render(self):
         if not hasattr(self, 'fig'):
