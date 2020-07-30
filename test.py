@@ -3,6 +3,7 @@ import torch
 from environment import Environment
 from model import Network
 from search import find_path
+from tqdm import tqdm
 import pickle
 import os
 import matplotlib as mpl
@@ -17,7 +18,7 @@ torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
 test_num = 200
-device = torch.device('cpu')
+device = torch.device('cuda')
 # device = torch.device('cpu')
 
 def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple]):
@@ -42,7 +43,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
 
     env = Environment(num_agents=num_agents, map_length=map_length)
 
-    for _ in range(test_num):
+    for _ in tqdm(range(test_num)):
         tests['maps'].append(np.copy(env.map))
         tests['agents'].append(np.copy(env.agents_pos))
         tests['goals'].append(np.copy(env.goals_pos))
@@ -79,7 +80,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test8_20.pkl'):
+def test_model(test_case='test8_70.pkl'):
 
     network = Network()
     network.eval()
@@ -95,7 +96,7 @@ def test_model(test_case='test8_20.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 200000
+    model_name = 290000
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -121,7 +122,7 @@ def test_model(test_case='test8_20.pkl'):
 
                 obs_pos = env.observe()
 
-                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos))
+                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos).to(device))
 
                 if i == case and show and env.steps < show_steps:
                     print(obs_pos[0, 3:7, 4, 4])
@@ -163,7 +164,7 @@ def test_model(test_case='test8_20.pkl'):
                 f.write('mean steps: %.2f\n' %mean_steps)
                 f.write('optimal mean steps: %.2f\n' %tests['opt_mean_steps'])
 
-        model_name += config.save_interval
+        model_name += 2000
 
 def make_animation():
     color_map = np.array([[255, 255, 255],   # white
@@ -229,7 +230,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(1, 70)
-    test_model()
+    create_test(16, 70)
+    # test_model()
     # make_animation()
     # create_test(1, 20)

@@ -123,7 +123,7 @@ class SumTree:
 
 
 class LocalBuffer:
-    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'act_buf', 'rew_buf', 'hid_buf', 'q_buf',
+    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'act_buf', 'rew_buf', 'hid_buf', 'cell_buf', 'q_buf',
                     'capacity', 'size', 'done', 'td_errors')
     def __init__(self, actor_id, num_agents, map_len, init_obs, size=config.max_steps):
         """
@@ -138,6 +138,7 @@ class LocalBuffer:
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
         self.hid_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
+        self.cell_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
 
         self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
 
@@ -160,7 +161,8 @@ class LocalBuffer:
         self.rew_buf[self.size] = reward
         self.obs_buf[self.size+1] = next_obs
         self.q_buf[self.size] = q_val
-        self.hid_buf[self.size] = hidden
+        self.hid_buf[self.size] = hidden[0]
+        self.cell_buf[self.size] = hidden[1]
 
         self.size += 1
 
@@ -176,7 +178,9 @@ class LocalBuffer:
         self.act_buf = self.act_buf[:self.size]
         self.rew_buf = self.rew_buf[:self.size]
         self.hid_buf = self.hid_buf[:self.size]
+        self.cell_buf = self.cell_buf[:self.size]
         self.q_buf = self.q_buf[:self.size+1]
+
 
         self.td_errors = np.zeros(self.capacity, dtype=np.float64)
 
@@ -187,4 +191,4 @@ class LocalBuffer:
         q_val = self.q_buf[np.arange(self.size), self.act_buf]
         self.td_errors[:self.size] = np.abs(reward-q_val)
 
-        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size
+        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.act_buf, self.rew_buf, self.hid_buf, self.cell_buf, self.td_errors, self.done, self.size

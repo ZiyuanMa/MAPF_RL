@@ -70,7 +70,7 @@ class Network(nn.Module):
 
         )
 
-        self.recurrent = nn.GRU(16*7*7, self.latent_dim, batch_first=True)
+        self.recurrent = nn.LSTM(16*7*7, self.latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
@@ -93,15 +93,16 @@ class Network(nn.Module):
         # print(obs.shape)
         latent = self.obs_encoder(obs)
         latent = latent.unsqueeze(1)
+
         self.recurrent.flatten_parameters()
         if self.hidden is None:
             _, self.hidden = self.recurrent(latent)
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
-        self.hidden = torch.squeeze(self.hidden, dim=0)
 
-        adv_val = self.adv(self.hidden)
-        state_val = self.state(self.hidden)
+        hidden = torch.squeeze(self.hidden[0], dim=0)
+        adv_val = self.adv(hidden)
+        state_val = self.state(hidden)
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
@@ -116,9 +117,8 @@ class Network(nn.Module):
             # print(q_val.shape)
             actions = torch.argmax(q_val, 1).tolist()
 
-        self.hidden = self.hidden.unsqueeze(0)
 
-        return actions, q_val.numpy(), self.hidden[0].numpy()
+        return actions, q_val.cpu().numpy(), (self.hidden[0][0].cpu().numpy(), self.hidden[1][0].cpu().numpy())
 
     def reset(self):
         self.hidden = None
@@ -126,7 +126,7 @@ class Network(nn.Module):
     def bootstrap(self, obs, steps, hidden):
         batch_size = obs.size(0)
         step = obs.size(1)
-        hidden = hidden.unsqueeze(0)
+        hidden = (hidden[0].unsqueeze(0), hidden[1].unsqueeze(0))
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
 
@@ -139,7 +139,7 @@ class Network(nn.Module):
         self.recurrent.flatten_parameters()
         _, hidden = self.recurrent(latent, hidden)
 
-        hidden = torch.squeeze(hidden)
+        hidden = torch.squeeze(hidden[0])
         
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
