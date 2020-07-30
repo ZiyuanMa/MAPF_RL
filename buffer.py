@@ -123,12 +123,9 @@ class SumTree:
 
 
 class LocalBuffer:
-    # __slots__ = ('num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'q_buf',
-    #                 'capacity', 'size', 'imitation', 'done', 'td_errors', 'comm_mask', 'actor_id', 'map_len')
-
-    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'pos_buf', 'act_buf', 'rew_buf', 'hid_buf', 'q_buf',
-                    'capacity', 'size', 'done', 'td_errors', 'comm_mask')
-    def __init__(self, actor_id, num_agents, map_len, init_obs_pos, size=config.max_steps):
+    __slots__ = ('actor_id', 'map_len', 'num_agents', 'obs_buf', 'act_buf', 'rew_buf', 'hid_buf', 'cell_buf', 'q_buf',
+                    'capacity', 'size', 'done', 'td_errors')
+    def __init__(self, actor_id, num_agents, map_len, init_obs, size=config.max_steps):
         """
         Prioritized Replay buffer for each actor
         """
@@ -137,166 +134,61 @@ class LocalBuffer:
         self.num_agents = num_agents
         self.map_len = map_len
         # observation length should be (max steps+1)
-        self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros((size+1, self.num_agents, *config.pos_shape), dtype=np.int16)
+        self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
-        self.hid_buf = np.zeros((size, self.num_agents, config.latent_dim), dtype=np.float32)
-        self.comm_mask = np.zeros((size+1, self.num_agents, self.num_agents), dtype=np.bool)
+        self.hid_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
+        self.cell_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
 
-        if config.distributional:
-            # quantile values
-            self.q_buf = np.zeros((size+1, 5, 200), dtype=np.float32)
-        else:
-            self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
+        self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
 
         self.capacity = size
         self.size = 0
 
-        self.obs_buf[0], self.pos_buf[0] = init_obs_pos
+        self.obs_buf[0] = init_obs
 
         # self.td_errors = np.zeros(size, dtype=np.float32)
     
     def __len__(self):
         return self.size
 
-    def make_writeable(self):
-        self.td_errors.flags.writeable = True
 
-
-    def __getitem__(self, idx:int):
-        assert idx < self.size
-
-        # self play
-        forward = 1
-        reward = self.rew_buf[idx]
-
-        if self.done and idx+forward == self.size:
-            done = True
-        else:
-            done = False
-
-        # obs and pos
-        bt_steps = min(idx+1, config.bt_steps)
-        # obs = np.swapaxes(self.obs_buf[idx+1-bt_steps:idx+1], 0, 1)
-        # pos = np.swapaxes(self.pos_buf[idx+1-bt_steps:idx+1], 0, 1)
-        obs = self.obs_buf[idx+1-bt_steps:idx+2].swapaxes(0,1)
-        pos = self.pos_buf[idx+1-bt_steps:idx+2].swapaxes(0,1)
-        comm_mask = self.comm_mask[idx+1-bt_steps:idx+2]
-
-        # if len(adj_list)==1:
-        #     obs = np.expand_dims(obs, 1)
-        #     pos = np.expand_dims(pos, 1)
-
-        # print(obs.shape)
-        # print(adj_list)
-        # print(type(adj_list))
-
-        if bt_steps < config.bt_steps:
-            step_pad = config.bt_steps-bt_steps
-            obs = np.pad(obs, ((0,0), (0,step_pad), (0,0), (0,0), (0,0)))
-            pos = np.pad(pos, ((0,0), (0,step_pad), (0,0)))
-            comm_mask = np.pad(comm_mask, ((0,step_pad), (0,0), (0,0)))
-
-        return obs, pos, self.act_buf[idx, 0], reward, done, forward, bt_steps, comm_mask
-        # obs = self.obs_buf[idx+1-bt_steps:idx+2]
-        # pos = self.pos_buf[idx+1-bt_steps:idx+2]
-
-        # if bt_steps < config.bt_steps:
-        #     pad_len = config.bt_steps-bt_steps
-        #     obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0)))
-        #     pos = np.pad(pos, ((0,pad_len),(0,0)))
-
-
-        # if idx == config.bt_steps:
-        #     hidden = np.zeros(256, dtype=np.float32)
-        #     next_hidden = self.hid_buf[0]
-        # elif idx < config.bt_steps:
-        #     hidden = np.zeros(256, dtype=np.float32)
-        #     next_hidden = np.zeros(256, dtype=np.float32)
-        # else:
-        #     hidden = self.hid_buf[idx-config.bt_steps-1]
-        #     next_hidden = self.hid_buf[idx-config.bt_steps]
-
-        # return obs, pos, self.act_buf[idx], reward, done, forward, bt_steps, hidden, next_hidden
-
-    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs_pos:np.ndarray, hidden, comm_mask):
+    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs:np.ndarray, hidden):
 
         assert self.size < self.capacity
 
         self.act_buf[self.size] = action
         self.rew_buf[self.size] = reward
-        self.obs_buf[self.size+1], self.pos_buf[self.size+1] = next_obs_pos
+        self.obs_buf[self.size+1] = next_obs
         self.q_buf[self.size] = q_val
-        self.hid_buf[self.size] = hidden
-        self.comm_mask[self.size] = comm_mask
+        self.hid_buf[self.size] = hidden[0]
+        self.cell_buf[self.size] = hidden[1]
 
         self.size += 1
 
-    def finish(self, last_q_val=None, last_comm_mask=None):
+    def finish(self, last_q_val=None):
         # last q value is None if done
         if last_q_val is None:
             self.done = True
         else:
             self.done = False
             self.q_buf[self.size] = last_q_val
-            self.comm_mask[self.size] = last_comm_mask
         
         self.obs_buf = self.obs_buf[:self.size+1]
-        self.pos_buf = self.pos_buf[:self.size+1]
         self.act_buf = self.act_buf[:self.size]
         self.rew_buf = self.rew_buf[:self.size]
         self.hid_buf = self.hid_buf[:self.size]
+        self.cell_buf = self.cell_buf[:self.size]
         self.q_buf = self.q_buf[:self.size+1]
-        self.comm_mask = self.comm_mask[:self.size+1]
+
 
         self.td_errors = np.zeros(self.capacity, dtype=np.float64)
 
-        for i in range(self.size):
-            # forward = 1
-            if config.distributional:
-                next_dist = self.q_buf[i+1, 0]
-                next_q = np.mean(next_dist, axis=1)
-                next_action = np.argmax(next_q)
-                next_dist = next_dist[next_action]
 
-                target_dist = self.rew_buf[i, 0]+0.99*next_dist
+        q_max = np.max(self.q_buf[:self.size], axis=1)
+        ret = self.rew_buf.tolist() + [ 0 for _ in range(config.forward_steps-1)]
+        reward = np.convolve(ret, [0.99**(config.forward_steps-1-i) for i in range(config.forward_steps)],'valid')+q_max
+        q_val = self.q_buf[np.arange(self.size), self.act_buf]
+        self.td_errors[:self.size] = np.abs(reward-q_val)
 
-                curr_dist = self.q_buf[i, 0, self.act_buf[i, 0]]
-
-                self.td_errors[i] = quantile_huber_loss(curr_dist, target_dist)
-            else:
-                reward = self.rew_buf[i]+0.99*np.max(self.q_buf[i+1], axis=0)
-                q_val = self.q_buf[i, self.act_buf[i]]
-                self.td_errors[i] = np.abs(reward-q_val)
-
-        # if config.distributional:
-        #     raise NotImplementedError
-        # else:
-        #     if self.imitation:
-        #         for i in range(self.size):
-        #             forward = min(4, self.size-i)
-        #             reward = np.sum(self.rew_buf[i:i+forward, 0]*discounts[:forward], axis=0)+(0.99**forward)*np.max(self.q_buf[i+forward, 0], axis=0)
-        #             q_val = self.q_buf[i, 0, self.act_buf[i, 0]]
-        #             self.td_errors[i] = np.abs(reward-q_val)
-        #     else:
-        #         selected_q = self.q_buf[:, 0][self.act_buf[:, 0]]
-        #         max_q = np.max(self.q_buf[:, 0], axis=0)
-
-        relative_pos = np.abs(np.expand_dims(self.pos_buf[:, :, :2], 1)-np.expand_dims(self.pos_buf[:, :, :2], 2))
-
-        in_obs_mask = np.all(relative_pos<=config.obs_radius, axis=3)
-        relative_dis = np.sqrt(relative_pos[:, :, :, 0]**2+relative_pos[:, :, :, 1]**2)
-        dis_mask = np.zeros((self.size+1, self.num_agents, self.num_agents), dtype=np.bool)
-        max_comm_agents = min(config.max_comm_agents, self.num_agents)
-        dis_mask[np.repeat(np.arange(self.size+1), self.num_agents*max_comm_agents), np.tile(np.repeat(np.arange(self.num_agents), max_comm_agents), (self.size+1)), relative_dis.argsort()[:,:,:max_comm_agents].flatten()] = True
-
-        # if not (self.comm_mask == np.bitwise_and(in_obs_mask, dis_mask)).all():
-        #     # print(self.comm_mask)
-        #     # print('and')
-        #     # print(np.bitwise_and(in_obs_mask, dis_mask))
-        #     print(in_obs_mask)
-        #     print(dis_mask)
-        #     raise RuntimeError
-
-        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.pos_buf, self.act_buf, self.rew_buf, self.hid_buf, self.td_errors, self.done, self.size, self.comm_mask
+        return  self.actor_id, self.num_agents, self.map_len, self.obs_buf, self.act_buf, self.rew_buf, self.hid_buf, self.cell_buf, self.td_errors, self.done, self.size
