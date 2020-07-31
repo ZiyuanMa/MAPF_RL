@@ -186,13 +186,10 @@ class Network(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     @torch.no_grad()
-    def step(self, obs, pos):
+    def step(self, obs):
         # print(obs.shape)
         num_agents = obs.size(0)
-        obs_latent = self.obs_encoder(obs)
-        pos_latent = self.pos_encoder(pos)
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
+        latent = self.obs_encoder(obs)
 
         if self.hidden is None:
             self.hidden = self.recurrent(latent)
@@ -200,7 +197,7 @@ class Network(nn.Module):
             self.hidden = self.recurrent(latent, self.hidden)
 
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
-        self.hidden = self.hidden.unsqueeze(0)
+        hidden = self.hidden[0].unsqueeze(0)
 
         # masks for communication block
         agents_pos = pos[:, :2]
@@ -218,7 +215,7 @@ class Network(nn.Module):
 
         comm_mask = torch.bitwise_and(in_obs_mask, dis_mask)
         # assert dis_mask[0, 0] == 0, dis_mat
-        self.hidden = self.comm(self.hidden, comm_mask)
+        self.hidden = self.comm(hidden, comm_mask)
         self.hidden = self.hidden.squeeze(0)
 
         adv_val = self.adv(self.hidden)

@@ -423,13 +423,13 @@ class Actor:
         """ Generate training batch sample """
         done = False
         buffer_list = []
-        obs_pos, local_buffer = self.reset()
+        obs, local_buffer = self.reset()
 
         while True:
 
             # sample action
             # Note: q_val is quantile values if it's distributional
-            actions, q_val, hidden, comm_mask = self.model.step(torch.from_numpy(obs_pos[0].astype(np.float32)), torch.from_numpy(obs_pos[1].astype(np.float32)))
+            actions, q_val, hidden, comm_mask = self.model.step(torch.from_numpy(obs.astype(np.float32)))
 
             if random.random() < self.epsilon:
                 # Note: only one agent can do random action in order to make the whole environment more stable
@@ -476,8 +476,8 @@ class Actor:
     def reset(self):
         self.model.reset()
         level_id = ray.get(self.global_buffer.get_level.remote())
-        obs_pos = self.env.reset(ray.get(level_id))
-        local_buffer = LocalBuffer(self.id, self.env.num_agents, self.env.map_size[0], (obs_pos[0][0], obs_pos[1][0]))
+        obs = self.env.reset(ray.get(level_id))
+        local_buffer = LocalBuffer(self.id, self.env.num_agents, self.env.map_size[0], obs)
 
-        return obs_pos, local_buffer
+        return obs, local_buffer
 
