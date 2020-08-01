@@ -135,21 +135,16 @@ class CommBlock(nn.Module):
 
 
 class Network(nn.Module):
-    def __init__(self, cnn_channel=config.cnn_channel,
-                obs_dim=config.obs_dim, obs_latent_dim=config.obs_latent_dim,
-                pos_dim=config.pos_dim, pos_latent_dim=config.pos_latent_dim,
-                distributional=config.distributional):
+    def __init__(self, cnn_channel=config.cnn_channel, distributional=config.distributional):
 
         super().__init__()
 
-        self.obs_dim = obs_dim
-        self.pos_dim = pos_dim
-        self.latent_dim = obs_latent_dim + pos_latent_dim
+        self.latent_dim = config.latent_dim
         self.distributional = distributional
         self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(config.obs_shape[0], 128, 3, 1, 1),
+            nn.Conv2d(config.obs_shape[0], 128, 3, 1),
             nn.ReLU(True),
 
             ResBlock(128, type='cnn'),
@@ -165,7 +160,7 @@ class Network(nn.Module):
 
         )
 
-        self.recurrent = nn.GRUCell(16*7*7, self.latent_dim)
+        self.recurrent = nn.LSTMCell(16*7*7, self.latent_dim)
 
         self.comm = CommBlock(self.latent_dim)
 
@@ -186,7 +181,7 @@ class Network(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     @torch.no_grad()
-    def step(self, obs):
+    def step(self, obs, pos):
         # print(obs.shape)
         num_agents = obs.size(0)
         latent = self.obs_encoder(obs)
@@ -200,7 +195,7 @@ class Network(nn.Module):
         hidden = self.hidden[0].unsqueeze(0)
 
         # masks for communication block
-        agents_pos = pos[:, :2]
+        agents_pos = pos
         pos_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0))
         dis_mat = (pos_mat[:,:,0]**2+pos_mat[:,:,1]**2).sqrt()
 
@@ -215,11 +210,13 @@ class Network(nn.Module):
 
         comm_mask = torch.bitwise_and(in_obs_mask, dis_mask)
         # assert dis_mask[0, 0] == 0, dis_mat
-        self.hidden = self.comm(hidden, comm_mask)
-        self.hidden = self.hidden.squeeze(0)
+        hidden = self.comm(hidden, comm_mask)
+        hidden = hidden.squeeze(0)
 
-        adv_val = self.adv(self.hidden)
-        state_val = self.state(self.hidden)
+        adv_val = self.adv(hidden)
+        state_val = self.state(hidden)
+
+        self.hidden = hidden, self.hidden[1]
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
@@ -234,26 +231,21 @@ class Network(nn.Module):
             # print(q_val.shape)
             actions = torch.argmax(q_val, 1).tolist()
 
-        return actions, q_val.numpy(), self.hidden.numpy(), comm_mask.numpy()
+        return actions, q_val.numpy(), hidden.numpy(), comm_mask.numpy()
 
     def reset(self):
         self.hidden = None
 
-    def bootstrap(self, obs, pos, steps, hidden, comm_mask):
+    def bootstrap(self, obs, steps, hidden, comm_mask):
         # comm_mask size: batch_size x bt_steps x num_agents x num_agents
         max_steps = obs.size(1)
         num_agents = comm_mask.size(2)
 
         obs = obs.transpose(1, 2)
-        pos = pos.transpose(1, 2)
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
-        pos = pos.contiguous().view(-1, self.pos_dim)
 
-        obs_latent = self.obs_encoder(obs)
-        pos_latent = self.pos_encoder(pos)
-        concat_latent = torch.cat((obs_latent, pos_latent), dim=1)
-        latent = self.concat_encoder(concat_latent)
+        latent = self.obs_encoder(obs)
 
         latent = latent.view(config.batch_size*num_agents, max_steps, self.latent_dim).transpose(0, 1)
 

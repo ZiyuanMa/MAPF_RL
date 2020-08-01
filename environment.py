@@ -464,7 +464,7 @@ class Environment:
 
             obs[i, 2:] = self.navi_map[i, :, x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
-        return obs
+        return obs, self.agents_pos
     
     def render(self):
         if not hasattr(self, 'fig'):

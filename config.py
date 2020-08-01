@@ -50,7 +50,7 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 16
+max_num_agetns = 12
 max_map_lenght = 40
 pass_rate = 0.9
 
@@ -64,3 +64,5 @@ max_comm_agents = 3 # including agent itself, means one can at most communicate 
 # communication block
 num_comm_layers = 2
 num_comm_heads = 2
+
+forward_steps = 2
