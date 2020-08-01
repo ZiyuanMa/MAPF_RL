@@ -22,12 +22,12 @@ obs_shape = (6,9,9)
 training_times = 1000000
 save_interval=2000
 gamma=0.99
-batch_size=128
+batch_size=256
 learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 32
+bt_steps = 16
 load_model = None
 
 local_buffer_size = max_steps
@@ -42,7 +42,7 @@ grad_norm_dqn=40
 forward_steps = 2
 
 # distributional dqn
-distributional = True
+distributional = False
 
 
 # prioritized replay
