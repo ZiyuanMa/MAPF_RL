@@ -246,7 +246,7 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=5e-5, eps=0.01/32)
+        self.optimizer = Adam(self.model.parameters(), lr=1e-4, eps=1e-3)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
