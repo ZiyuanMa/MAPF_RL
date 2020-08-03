@@ -160,7 +160,7 @@ class Network(nn.Module):
 
         )
 
-        self.recurrent = nn.LSTMCell(16*7*7, self.latent_dim)
+        self.recurrent = nn.GRUCell(16*7*7, self.latent_dim)
 
         self.comm = CommBlock(self.latent_dim)
 
@@ -192,7 +192,7 @@ class Network(nn.Module):
             self.hidden = self.recurrent(latent, self.hidden)
 
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
-        hidden = self.hidden[0].unsqueeze(0)
+        hidden = self.hidden.unsqueeze(0)
 
         # masks for communication block
         agents_pos = pos
@@ -215,8 +215,6 @@ class Network(nn.Module):
 
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
-
-        self.hidden = hidden, self.hidden[1]
 
         if self.distributional:
             adv_val = adv_val.view(-1, 5, self.num_quant)
@@ -243,11 +241,11 @@ class Network(nn.Module):
 
         obs = obs.transpose(1, 2)
 
-        obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
+        obs = obs.contiguous().view(-1, 6, 9, 9)
 
         latent = self.obs_encoder(obs)
 
-        latent = latent.view(config.batch_size*num_agents, max_steps, self.latent_dim).transpose(0, 1)
+        latent = latent.view(config.batch_size*num_agents, max_steps, 16*7*7).transpose(0, 1)
 
         hidden_buffer = []
         for i in range(max_steps):

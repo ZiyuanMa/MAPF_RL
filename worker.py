@@ -38,7 +38,6 @@ class GlobalBuffer:
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
         self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.latent_dim), dtype=np.float32)
-        self.cell_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.latent_dim), dtype=np.float32)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
         self.comm_mask = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, config.max_num_agetns), dtype=np.bool)
@@ -71,17 +70,17 @@ class GlobalBuffer:
 
 
     def add(self, buffer_list:List):
-        # actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, cell_buf 7, td_errors 8, done 9, size 10, comm_mask 11
+        # actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, td_errors 7, done 8, size 9, comm_mask 10
         for buffer in buffer_list:
             if buffer[0] >= 10:
                 stat_key = (buffer[1], buffer[2])
 
                 if stat_key in self.stat_dict:
                     if len(self.stat_dict[stat_key]) < 200:
-                        self.stat_dict[stat_key].append(buffer[9])
+                        self.stat_dict[stat_key].append(buffer[8])
                     else:
                         self.stat_dict[stat_key].pop(0)
-                        self.stat_dict[stat_key].append(buffer[9])
+                        self.stat_dict[stat_key].append(buffer[8])
 
         with self.lock:
 
@@ -90,19 +89,18 @@ class GlobalBuffer:
                 start_idx = self.ptr*config.max_steps
                 # update buffer size
                 self.size -= self.size_buf[self.ptr].item()
-                self.size += buffer[10]
-                self.counter += buffer[10]
+                self.size += buffer[9]
+                self.counter += buffer[9]
 
-                self.priority_tree.batch_update(idxes, buffer[8]**self.alpha)
+                self.priority_tree.batch_update(idxes, buffer[7]**self.alpha)
 
-                self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+buffer[10]+1, :buffer[1]] = buffer[3]
-                self.act_buf[start_idx:start_idx+buffer[10]] = buffer[4]
-                self.rew_buf[start_idx:start_idx+buffer[10]] = buffer[5]
-                self.hid_buf[start_idx:start_idx+buffer[10], :buffer[1]] = buffer[6]
-                self.cell_buf[start_idx:start_idx+buffer[10], :buffer[1]] = buffer[7]
-                self.done_buf[self.ptr] = buffer[9]
-                self.size_buf[self.ptr] = buffer[10]
-                self.comm_mask[start_idx+self.ptr:start_idx+self.ptr+buffer[10]+1, :buffer[1], :buffer[1]] = buffer[11]
+                self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+buffer[9]+1, :buffer[1]] = buffer[3]
+                self.act_buf[start_idx:start_idx+buffer[9]] = buffer[4]
+                self.rew_buf[start_idx:start_idx+buffer[9]] = buffer[5]
+                self.hid_buf[start_idx:start_idx+buffer[9], :buffer[1]] = buffer[6]
+                self.done_buf[self.ptr] = buffer[8]
+                self.size_buf[self.ptr] = buffer[9]
+                self.comm_mask[start_idx+self.ptr:start_idx+self.ptr+buffer[9]+1, :buffer[1], :buffer[1]] = buffer[10]
 
                 self.ptr = (self.ptr+1) % self.capacity
 
@@ -110,7 +108,7 @@ class GlobalBuffer:
 
         b_obs, b_action, b_reward, b_done, b_steps, b_bt_steps, b_comm_mask = [], [], [], [], [], [], []
         idxes, priorities = [], []
-        b_hidden, b_cell = [], []
+        b_hidden = []
 
         with self.lock:
 
@@ -129,19 +127,16 @@ class GlobalBuffer:
                     obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0),(0,0)))
                     comm_mask = np.pad(comm_mask, ((0,pad_len),(0,0),(0,0)))
                     hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
-                    cell = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
 
                 elif local_idx == config.bt_steps-1:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+2]
                     hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
-                    cell = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
 
                 else:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     comm_mask = self.comm_mask[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
                     hidden = self.hid_buf[idx-config.bt_steps-1]
-                    cell = self.cell_buf[idx-config.bt_steps-1]
 
                 action = self.act_buf[idx]
                 reward = self.rew_buf[idx]
@@ -162,7 +157,6 @@ class GlobalBuffer:
                 b_comm_mask.append(comm_mask)
 
                 b_hidden.append(hidden)
-                b_action.append(cell)
 
             # importance sampling weights
             min_p = np.min(priorities)
@@ -177,7 +171,6 @@ class GlobalBuffer:
                 torch.FloatTensor(b_steps).unsqueeze(1),
                 torch.LongTensor(b_bt_steps),
                 torch.from_numpy(np.concatenate(b_hidden)),
-                torch.from_numpy(np.concatenate(b_cell)),
                 torch.from_numpy(np.stack(b_comm_mask)),
 
                 idxes,
@@ -293,10 +286,10 @@ class Learner:
                 data_id = ray.get(self.buffer.get_data.remote())
                 data = ray.get(data_id)
     
-                b_obs, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, b_cell, b_comm_mask, idxes, weights, old_ptr = data
+                b_obs, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, b_comm_mask, idxes, weights, old_ptr = data
                 b_obs, b_action, b_reward = b_obs.to(self.device), b_action.to(self.device), b_reward.to(self.device)
                 b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
-                b_hidden = (b_hidden.to(self.device), b_cell.to(self.device))
+                b_hidden = b_hidden.to(self.device)
                 b_comm_mask = b_comm_mask.to(self.device)
 
                 b_next_bt_steps = b_bt_steps+1
