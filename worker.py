@@ -125,7 +125,7 @@ class GlobalBuffer:
                     cell = np.zeros(config.latent_dim, dtype=np.float32)
                 else:
                     hidden = self.hid_buf[idx-config.bt_steps-1]
-                    cell = self.hid_buf[idx-config.bt_steps-1]
+                    cell = self.cell_buf[idx-config.bt_steps-1]
                 
                 if obs.shape[0] < config.bt_steps+config.forward_steps:
                     pad_len = config.bt_steps+config.forward_steps-obs.shape[0]
