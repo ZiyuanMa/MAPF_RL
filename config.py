@@ -22,18 +22,18 @@ obs_shape = (6,9,9)
 training_times = 1000000
 save_interval=2500
 gamma=0.99
-batch_size=128
+batch_size=256
 learning_starts=50000
 target_network_update_freq=2500
 save_path='./models'
 max_steps = 256
-bt_steps = 32
+bt_steps = 16
 load_model = None
 
 local_buffer_size = max_steps
 global_buffer_size = 1024*local_buffer_size
 
-actor_update_steps = 400
+actor_update_steps = 200
 
 # gradient norm clipping
 grad_norm_dqn=40
@@ -60,4 +60,4 @@ pass_rate = 0.9
 
 # dqn network setting
 cnn_channel = 64
-latent_dim = 512
+latent_dim = 256
