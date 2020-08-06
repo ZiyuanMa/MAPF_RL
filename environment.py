@@ -98,7 +98,7 @@ class Environment:
 
         # set as same as in PRIMAL
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
-        self.obstacle_density = 0.3
+        # self.obstacle_density = 0.3
 
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.int)
         
@@ -155,7 +155,7 @@ class Environment:
             self.map_size = (map_length, map_length)
 
         self.obstacle_density = np.random.triangular(0, 0.33, 0.5)
-        self.obstacle_density = 0.3
+        # self.obstacle_density = 0.3
         
         self.map = np.random.choice(2, self.map_size, p=[1-self.obstacle_density, self.obstacle_density]).astype(np.float32)
         

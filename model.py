@@ -61,14 +61,17 @@ class Network(nn.Module):
 
             ResBlock(128, type='cnn'),
 
-            nn.Conv2d(128, 16, 1, 1),
+            ResBlock(128, type='cnn'),
+
+
+            nn.Conv2d(128, 8, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
 
         )
 
-        self.recurrent = nn.LSTM(16*7*7, self.latent_dim, batch_first=True)
+        self.recurrent = nn.LSTM(8*7*7, self.latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
@@ -130,7 +133,7 @@ class Network(nn.Module):
 
         latent = self.obs_encoder(obs)
 
-        latent = latent.view(batch_size, step, 16*7*7)
+        latent = latent.view(batch_size, step, 8*7*7)
 
         latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
