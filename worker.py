@@ -4,7 +4,7 @@ import random
 import os
 import torch
 import torch.nn as nn
-from torch.optim import Adam
+from torch.optim import Adam, RMSprop
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 from copy import deepcopy
@@ -246,7 +246,7 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=1e-4, eps=1e-3)
+        self.optimizer = RMSprop(self.model.parameters(), lr=2.5e-4/4, eps=1.5e-7, weight_decay=0.95)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0

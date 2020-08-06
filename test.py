@@ -21,7 +21,7 @@ test_num = 200
 device = torch.device('cuda')
 # device = torch.device('cpu')
 
-def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple]):
+def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple], density=None):
 
     name = './test{}_{}.pkl'.format(agent_range, map_range)
 
@@ -41,7 +41,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
     else:
         map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
 
-    env = Environment(num_agents=num_agents, map_length=map_length)
+    env = Environment(fix_density=None, num_agents=num_agents, map_length=map_length)
 
     for _ in tqdm(range(test_num)):
         tests['maps'].append(np.copy(env.map))
@@ -230,7 +230,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(16, 40)
-    test_model()
+    create_test(32, 40, 0.3)
+    # test_model()
     # make_animation()
     # create_test(1, 20)
