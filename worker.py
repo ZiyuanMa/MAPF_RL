@@ -246,7 +246,8 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=5e-4)
+        self.optimizer = Adam(self.model.parameters(), lr=1e-4)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[100000, 300000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
@@ -336,6 +337,8 @@ class Learner:
                 nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
                 self.optimizer.step()
+
+                self.scheduler.step()
 
                 # store new weights in shared memory
                 if i % 5  == 0:
