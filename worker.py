@@ -4,7 +4,7 @@ import random
 import os
 import torch
 import torch.nn as nn
-from torch.optim import Adam, RMSprop
+from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
 import numpy as np
 from copy import deepcopy
@@ -68,7 +68,7 @@ class GlobalBuffer:
 
     def add(self, data:Tuple):
         # actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, cell_buf 7, td_errors 8, done 9, size 10
-        if data[0] >= 10:
+        if data[0] >= 12:
             stat_key = (data[1], data[2])
 
             if stat_key in self.stat_dict:
@@ -274,6 +274,7 @@ class Learner:
 
     def train(self):
         batch_idx = torch.arange(config.batch_size)
+
         while not ray.get(self.buffer.check_done.remote()):
             for i in range(1, 10001):
 
@@ -310,7 +311,7 @@ class Learner:
                     _, loss = self.quantile_huber_loss(td_errors, weights=weights)
 
                 else:
-                    # print(b_next_bt_steps)
+
                     with torch.no_grad():
                         # choose max q index from next observation
                         # double q-learning
@@ -332,12 +333,12 @@ class Learner:
 
                 loss.backward()
                 self.loss = loss.item()
-                # scaler.scale(loss).backward()
+
 
                 nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
                 self.optimizer.step()
-
+ 
                 self.scheduler.step()
 
                 # store new weights in shared memory

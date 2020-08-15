@@ -96,7 +96,7 @@ def test_model(test_case='test16_40.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 480000
+    model_name = 507500
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -164,7 +164,7 @@ def test_model(test_case='test16_40.pkl'):
                 f.write('mean steps: %.2f\n' %mean_steps)
                 f.write('optimal mean steps: %.2f\n' %tests['opt_mean_steps'])
 
-        model_name += 10000
+        model_name -= config.save_interval
 
 def make_animation():
     color_map = np.array([[255, 255, 255],   # white
@@ -230,7 +230,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    create_test(32, 40, 0.3)
-    # test_model()
+    # create_test(16, 40, 0.3)
+    test_model()
     # make_animation()
     # create_test(1, 20)

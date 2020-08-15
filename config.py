@@ -7,7 +7,7 @@ num_agents = 2
 obs_radius = 4
 reward_fn = dict(move=-0.075,
                 stay_on_goal=0,
-                stay_off_goal=-0.125,
+                stay_off_goal=-0.075,
                 collision=-0.5,
                 finish=3)
 
