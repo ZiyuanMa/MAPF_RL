@@ -20,11 +20,11 @@ obs_shape = (6,9,9)
 
 # basic training setting
 training_times = 1000000
-save_interval=10000
+save_interval=2500
 gamma=0.99
-batch_size=64
+batch_size=256
 learning_starts=50000
-target_network_update_freq=2000
+target_network_update_freq=2500
 save_path='./models'
 max_steps = 256
 bt_steps = 32
@@ -50,7 +50,7 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 8
+max_num_agetns = 12
 max_map_lenght = 40
 pass_rate = 0.9
 
