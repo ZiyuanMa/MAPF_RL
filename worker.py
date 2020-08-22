@@ -297,7 +297,8 @@ class Learner:
                 b_hidden = b_hidden.to(self.device)
                 b_comm_mask = b_comm_mask.to(self.device)
 
-                b_next_bt_steps = [ bt_steps+steps.item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
+                b_next_bt_steps = [ (bt_steps+steps).item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
+                b_next_bt_steps = torch.LongTensor(b_next_bt_steps)
 
                 if config.distributional:
                     raise NotImplementedError
