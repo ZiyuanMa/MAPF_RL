@@ -35,7 +35,6 @@ class GlobalBuffer:
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
         self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
         self.hid_buf = np.zeros((config.max_steps*capacity, config.latent_dim), dtype=np.float32)
-        self.cell_buf = np.zeros((config.max_steps*capacity, config.latent_dim), dtype=np.float32)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
 
@@ -67,34 +66,33 @@ class GlobalBuffer:
 
 
     def add(self, data:Tuple):
-        # actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, cell_buf 7, td_errors 8, done 9, size 10
+        # actor_id 0, num_agents 1, map_len 2, obs_buf 3, act_buf 4, rew_buf 5, hid_buf 6, td_errors 7, done 8, size 9
         if data[0] >= 12:
             stat_key = (data[1], data[2])
 
             if stat_key in self.stat_dict:
                 if len(self.stat_dict[stat_key]) < 200:
-                    self.stat_dict[stat_key].append(data[9])
+                    self.stat_dict[stat_key].append(data[8])
                 else:
                     self.stat_dict[stat_key].pop(0)
-                    self.stat_dict[stat_key].append(data[9])
+                    self.stat_dict[stat_key].append(data[8])
 
         with self.lock:
             idxes = np.arange(self.ptr*config.local_buffer_size, (self.ptr+1)*config.local_buffer_size)
             start_idx = self.ptr*config.max_steps
             # update buffer size
             self.size -= self.size_buf[self.ptr].item()
-            self.size += data[10]
-            self.counter += data[10]
+            self.size += data[9]
+            self.counter += data[9]
 
-            self.priority_tree.batch_update(idxes, data[8]**self.alpha)
+            self.priority_tree.batch_update(idxes, data[7]**self.alpha)
 
-            self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+data[10]+1] = data[3]
-            self.act_buf[start_idx:start_idx+data[10]] = data[4]
-            self.rew_buf[start_idx:start_idx+data[10]] = data[5]
-            self.hid_buf[start_idx:start_idx+data[10]] = data[6]
-            self.cell_buf[start_idx:start_idx+data[10]] = data[7]
-            self.done_buf[self.ptr] = data[9]
-            self.size_buf[self.ptr] = data[10]
+            self.obs_buf[start_idx+self.ptr:start_idx+self.ptr+data[9]+1] = data[3]
+            self.act_buf[start_idx:start_idx+data[9]] = data[4]
+            self.rew_buf[start_idx:start_idx+data[9]] = data[5]
+            self.hid_buf[start_idx:start_idx+data[9]] = data[6]
+            self.done_buf[self.ptr] = data[8]
+            self.size_buf[self.ptr] = data[9]
 
             self.ptr = (self.ptr+1) % self.capacity
 
@@ -102,7 +100,7 @@ class GlobalBuffer:
 
         b_obs, b_action, b_reward, b_done, b_steps, b_bt_steps, = [], [], [], [], [], []
         idxes, priorities = [], []
-        b_hidden, b_cell = [], []
+        b_hidden = []
 
         with self.lock:
 
@@ -122,10 +120,8 @@ class GlobalBuffer:
 
                 if local_idx <= config.bt_steps-1:
                     hidden = np.zeros(config.latent_dim, dtype=np.float32)
-                    cell = np.zeros(config.latent_dim, dtype=np.float32)
                 else:
                     hidden = self.hid_buf[idx-config.bt_steps-1]
-                    cell = self.cell_buf[idx-config.bt_steps-1]
                 
                 if obs.shape[0] < config.bt_steps+config.forward_steps:
                     pad_len = config.bt_steps+config.forward_steps-obs.shape[0]
@@ -150,7 +146,6 @@ class GlobalBuffer:
                 b_bt_steps.append(bt_steps)
 
                 b_hidden.append(hidden)
-                b_cell.append(cell)
 
             # importance sampling weights
             min_p = np.min(priorities)
@@ -164,8 +159,7 @@ class GlobalBuffer:
                 torch.FloatTensor(b_done).unsqueeze(1),
                 torch.FloatTensor(b_steps).unsqueeze(1),
                 b_bt_steps,
-                (torch.from_numpy(np.stack(b_hidden)),
-                torch.from_numpy(np.stack(b_cell))),
+                torch.from_numpy(np.stack(b_hidden)),
 
                 idxes,
                 torch.from_numpy(weights).unsqueeze(1),
@@ -284,7 +278,7 @@ class Learner:
                 b_obs, b_action, b_reward, b_done, b_steps, b_bt_steps, b_hidden, idxes, weights, old_ptr = data
                 b_obs, b_action, b_reward = b_obs.to(self.device), b_action.to(self.device), b_reward.to(self.device)
                 b_done, b_steps, weights = b_done.to(self.device), b_steps.to(self.device), weights.to(self.device)
-                b_hidden = (b_hidden[0].to(self.device), b_hidden[1].to(self.device))
+                b_hidden = b_hidden.to(self.device)
 
                 b_next_bt_steps = [ bt_steps+steps.item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
 
@@ -426,7 +420,7 @@ class Actor:
             next_obs, r, done, _ = self.env.step(actions)
 
             # return data and update observation
-            local_buffer.add(q_val[0], actions[0], r[0], next_obs[0], (hidden[0][0], hidden[1][0]))
+            local_buffer.add(q_val[0], actions[0], r[0], next_obs[0], hidden[0])
 
             if done == False and self.env.steps < self.max_steps:
 

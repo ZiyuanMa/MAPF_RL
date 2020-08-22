@@ -71,7 +71,7 @@ class Network(nn.Module):
 
         )
 
-        self.recurrent = nn.LSTM(8*7*7, self.latent_dim, batch_first=True)
+        self.recurrent = nn.GRU(8*7*7, self.latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
@@ -101,7 +101,7 @@ class Network(nn.Module):
         else:
             _, self.hidden = self.recurrent(latent, self.hidden)
 
-        hidden = torch.squeeze(self.hidden[0], dim=0)
+        hidden = torch.squeeze(self.hidden, dim=0)
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
@@ -119,7 +119,7 @@ class Network(nn.Module):
             actions = torch.argmax(q_val, 1).tolist()
 
 
-        return actions, q_val.cpu().numpy(), (self.hidden[0][0].cpu().numpy(), self.hidden[1][0].cpu().numpy())
+        return actions, q_val.cpu().numpy(), self.hidden[0].cpu().numpy()
 
     def reset(self):
         self.hidden = None
@@ -127,7 +127,7 @@ class Network(nn.Module):
     def bootstrap(self, obs, steps, hidden):
         batch_size = obs.size(0)
         step = obs.size(1)
-        hidden = (hidden[0].unsqueeze(0), hidden[1].unsqueeze(0))
+        hidden = hidden.unsqueeze(0)
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
 
@@ -140,7 +140,7 @@ class Network(nn.Module):
         self.recurrent.flatten_parameters()
         _, hidden = self.recurrent(latent, hidden)
 
-        hidden = torch.squeeze(hidden[0])
+        hidden = torch.squeeze(hidden)
         
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
