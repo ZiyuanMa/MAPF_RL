@@ -120,23 +120,27 @@ class GlobalBuffer:
                 
                 assert local_idx < self.size_buf[global_idx]
 
+                steps = int(min(config.forward_steps, (self.size_buf[global_idx]-local_idx).item()))
+
                 if local_idx < config.bt_steps-1:
-                    obs = self.obs_buf[global_idx*(config.max_steps+1):idx+global_idx+2]
-                    comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+2]
-                    pad_len = config.bt_steps-1-local_idx
-                    obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0),(0,0)))
-                    comm_mask = np.pad(comm_mask, ((0,pad_len),(0,0),(0,0)))
+                    obs = self.obs_buf[global_idx*(config.max_steps+1):idx+global_idx+1+steps]
+                    comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+1+steps]
                     hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
 
                 elif local_idx == config.bt_steps-1:
-                    obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+2]
+                    obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+1+steps]
+                    comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+1+steps]
                     hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
 
                 else:
-                    obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
-                    comm_mask = self.comm_mask[idx+global_idx+1-config.bt_steps:idx+global_idx+2]
+                    obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+1+steps]
+                    comm_mask = self.comm_mask[idx+global_idx+1-config.bt_steps:idx+global_idx+1+steps]
                     hidden = self.hid_buf[idx-config.bt_steps-1]
+
+                if obs.shape[0] < config.bt_steps+config.forward_steps:
+                    pad_len = config.bt_steps+config.forward_steps-obs.shape[0]
+                    obs = np.pad(obs, ((0,pad_len),(0,0),(0,0),(0,0),(0,0)))
+                    comm_mask = np.pad(comm_mask, ((0,pad_len),(0,0),(0,0)))
 
                 action = self.act_buf[idx]
                 reward = self.rew_buf[idx]
@@ -144,7 +148,7 @@ class GlobalBuffer:
                     done = True
                 else:
                     done = False
-                steps = 1
+
                 bt_steps = min(local_idx+1, config.bt_steps)
                 
                 b_obs.append(obs)
@@ -293,7 +297,7 @@ class Learner:
                 b_hidden = b_hidden.to(self.device)
                 b_comm_mask = b_comm_mask.to(self.device)
 
-                b_next_bt_steps = b_bt_steps+1
+                b_next_bt_steps = [ bt_steps+steps.item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
 
                 if config.distributional:
                     raise NotImplementedError
@@ -325,7 +329,7 @@ class Learner:
                         else:
                             b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
 
-                    b_q = self.model.bootstrap(b_obs[:, :-1], b_bt_steps, b_hidden, b_comm_mask[:, :-1]).gather(1, b_action)
+                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden, b_comm_mask[:, :-config.forward_steps]).gather(1, b_action)
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
