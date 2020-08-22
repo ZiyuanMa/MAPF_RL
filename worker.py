@@ -253,7 +253,7 @@ class GlobalBuffer:
 @ray.remote(num_cpus=1, num_gpus=1)
 class Learner:
     def __init__(self, buffer:GlobalBuffer):
-        torch.cuda.set_device(0)
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model = Network()
         self.model.to(self.device)
