@@ -56,7 +56,7 @@ pass_rate = 0.9
 
 # dqn network setting
 cnn_channel = 64
-latent_dim = 512
+latent_dim = 256
 
 # communication
 max_comm_agents = 3 # including agent itself, means one can at most communicate with (max_comm_agents-1) agents
