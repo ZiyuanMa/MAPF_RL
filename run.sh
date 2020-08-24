@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J MAPF     # Name that will show up in squeue
 #SBATCH --gres=gpu:1         # Request 4 GPU "generic resource"
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=18
 #SBATCH --time=7-00:00       # Max job time is 3 hours
 #SBATCH --output=%N-%j.out   # Terminal output to file named (hostname)-(jobid).out
 #SBATCH --partition=long     # long partition (allows up to 7 days runtime)
