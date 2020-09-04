@@ -196,7 +196,7 @@ class Network(nn.Module):
 
         # masks for communication block
         agents_pos = pos
-        pos_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0))
+        pos_mat = (agents_pos.unsqueeze(1)-agents_pos.unsqueeze(0)).abs()
         dis_mat = (pos_mat[:,:,0]**2+pos_mat[:,:,1]**2).sqrt()
 
         # mask out agents that out of range of FOV
