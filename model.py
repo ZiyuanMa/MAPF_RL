@@ -192,7 +192,7 @@ class Network(nn.Module):
             self.hidden = self.recurrent(latent, self.hidden)
 
         # from num_agents x latent_dim become num_agents x 1 x latent_dim
-        hidden = self.hidden.unsqueeze(0)
+        hidden = self.hidden.unsqueeze(1)
 
         # masks for communication block
         agents_pos = pos
