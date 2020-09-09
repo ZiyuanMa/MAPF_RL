@@ -21,14 +21,14 @@ pos_shape = (2,)
 
 # basic training setting
 training_times = 1000000
-save_interval=2000
+save_interval=2500
 gamma=0.99
-batch_size=128
+batch_size=256
 learning_starts=50000
 target_network_update_freq=2000
 save_path='./models'
 max_steps = 256
-bt_steps = 5
+bt_steps = 32
 load_model = None
 
 local_buffer_size = max_steps
@@ -54,8 +54,8 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 1
-max_map_lenght = 30
+max_num_agetns = 16
+max_map_lenght = 40
 pass_rate = 0.9
 
 # dqn network setting
