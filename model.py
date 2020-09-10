@@ -56,7 +56,7 @@ class Network(nn.Module):
         self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
-            nn.Conv2d(obs_dim, cnn_channel, 3, 1, 1),
+            nn.Conv2d(obs_dim, cnn_channel, 3, 1),
             nn.ReLU(True),
 
             ResBlock(cnn_channel, type='cnn'),
@@ -65,13 +65,11 @@ class Network(nn.Module):
 
             ResBlock(cnn_channel, type='cnn'),
 
-            nn.Conv2d(cnn_channel, 4, 1, 1),
+            nn.Conv2d(cnn_channel, 5, 1, 1),
             nn.ReLU(True),
 
             nn.Flatten(),
 
-            nn.Linear(4*9*9, obs_latent_dim),
-            nn.ReLU(True),
         )
 
         self.pos_encoder = nn.Sequential(
@@ -80,16 +78,9 @@ class Network(nn.Module):
             ResBlock(pos_latent_dim),
         )
 
-        self.act_encoder = nn.Sequential(
-            nn.Linear(5, config.act_latent_dim),
-            nn.ReLU(True),
-            ResBlock(config.act_latent_dim),
-        )
+        self.linear = ResBlock(config.obs_latent_dim+config.pos_latent_dim)
 
-        self.linear1 = ResBlock(config.obs_latent_dim+config.act_latent_dim)
-        self.linear2 = ResBlock(config.latent_dim)
-
-        self.recurrent = nn.GRU(config.obs_latent_dim+config.act_latent_dim, config.obs_latent_dim+config.act_latent_dim, batch_first=True)
+        self.recurrent = nn.GRU(config.obs_latent_dim+config.pos_latent_dim, config.obs_latent_dim+config.pos_latent_dim, batch_first=True)
 
         # dueling q structure
         if distributional:
@@ -107,14 +98,13 @@ class Network(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     @torch.no_grad()
-    def step(self, obs, pos, act):
+    def step(self, obs, pos):
         # print(obs.shape)
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
-        act_latent = self.act_encoder(act)
 
-        latent = torch.cat((obs_latent, act_latent), dim=1)
-        latent = self.linear1(latent)
+        latent = torch.cat((obs_latent, pos_latent), dim=1)
+        latent = self.linear(latent)
         latent = latent.unsqueeze(1)
         self.recurrent.flatten_parameters()
         if self.hidden is None:
@@ -123,9 +113,6 @@ class Network(nn.Module):
             _, self.hidden = self.recurrent(latent, self.hidden)
         hidden = torch.squeeze(self.hidden, dim=0)
 
-        hidden = torch.cat((hidden, pos_latent), dim=1)
-
-        hidden = self.linear2(hidden)
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
@@ -147,37 +134,32 @@ class Network(nn.Module):
     def reset(self):
         self.hidden = None
 
-    def bootstrap(self, obs, pos, act, steps, hidden):
+    def bootstrap(self, obs, pos, steps, hidden):
         batch_size = obs.size(0)
         step = obs.size(1)
         hidden = hidden.unsqueeze(0)
 
         obs = obs.contiguous().view(-1, self.obs_dim, 9, 9)
         pos = pos.contiguous().view(-1, self.pos_dim)
-        act = act.contiguous().view(-1, 5)
 
         obs_latent = self.obs_encoder(obs)
         pos_latent = self.pos_encoder(pos)
-        act_latent = self.act_encoder(act)
 
-        obs_act_latent = torch.cat((obs_latent, act_latent), dim=1)
+        latent = torch.cat((obs_latent, pos_latent), dim=1)
+
+        latent = self.linear(latent)
 
         # latent = latent.split(steps)
         # latent = pad_sequence(latent, batch_first=True)
 
-        obs_act_latent = obs_act_latent.view(batch_size, step, config.obs_latent_dim+config.act_latent_dim)
+        latent = latent.view(batch_size, step, config.obs_latent_dim+config.pos_latent_dim)
 
-        obs_act_latent = pack_padded_sequence(obs_act_latent, steps, batch_first=True, enforce_sorted=False)
+        latent = pack_padded_sequence(latent, steps, batch_first=True, enforce_sorted=False)
 
         self.recurrent.flatten_parameters()
-        _, hidden = self.recurrent(obs_act_latent, hidden)
+        _, hidden = self.recurrent(latent, hidden)
 
         hidden = torch.squeeze(hidden)
-        hidden = self.linear1(hidden)
-
-        hidden = torch.cat((hidden, pos_latent), dim=1)
-
-        hidden = self.linear2(hidden)
         
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
