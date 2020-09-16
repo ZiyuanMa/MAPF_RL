@@ -251,8 +251,8 @@ class Learner:
         self.model = Network()
         self.model.to(self.device)
         self.tar_model = deepcopy(self.model)
-        self.optimizer = Adam(self.model.parameters(), lr=1.25e-4)
-        self.scheduler = MultiStepLR(self.optimizer, milestones=[2000, config.training_times-20000, config.training_times-10000], gamma=0.5)
+        self.optimizer = Adam(self.model.parameters(), lr=1e-4)
+        self.scheduler = MultiStepLR(self.optimizer, milestones=[100000, 300000], gamma=0.5)
         self.buffer = buffer
         self.counter = 0
         self.last_counter = 0
@@ -273,7 +273,7 @@ class Learner:
             state_dict[k] = v.cpu()
         self.weights_id = ray.put(state_dict)
 
-    def run(self):
+    def run(self):/-*
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
         self.learning_thread.start()
 
