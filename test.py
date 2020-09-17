@@ -18,7 +18,7 @@ np.random.seed(0)
 random.seed(0)
 test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# device = torch.device('cpu')
+device = torch.device('cpu')
 
 def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple]):
 
@@ -79,7 +79,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(num_agents, test_case='test4.pkl'):
+def test_model(num_agents, test_case='test16_40.pkl'):
 
     network = Network()
     network.eval()
@@ -121,7 +121,7 @@ def test_model(num_agents, test_case='test4.pkl'):
 
                 obs_pos = env.observe()
 
-                actions, q_vals = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
+                actions, q_vals, _, _ = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
                 if i == case and show and env.steps < show_steps:
                     print(q_vals)
@@ -230,6 +230,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(8, 20)
-    # test_model(4)
+    test_model(16)
     # make_animation()
     
