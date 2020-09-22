@@ -14,89 +14,102 @@ import random
 import argparse
 from typing import Union
 import config
-torch.manual_seed(0)
-np.random.seed(0)
-random.seed(0)
+torch.manual_seed(1)
+np.random.seed(1)
+random.seed(1)
 test_num = 200
 device = torch.device('cuda')
-# device = torch.device('cpu')
+device = torch.device('cpu')
 
-def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple], density=None):
+# def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple], density=None):
 
-    name = './test{}_{}.pkl'.format(agent_range, map_range)
+#     name = './test{}_{}.pkl'.format(agent_range, map_range)
 
-    tests = {'maps': [], 'agents': [], 'goals': [], 'opt_steps': []}
+#     tests = {'maps': [], 'agents': [], 'goals': [], 'opt_steps': []}
 
-    if type(agent_range) is int:
-        num_agents = agent_range
-    elif type(agent_range) is list:
-        num_agents = random.choice(agent_range)
-    else:
-        num_agents = random.randint(agent_range[0], agent_range[1])
+#     if type(agent_range) is int:
+#         num_agents = agent_range
+#     elif type(agent_range) is list:
+#         num_agents = random.choice(agent_range)
+#     else:
+#         num_agents = random.randint(agent_range[0], agent_range[1])
 
-    if type(map_range) is int:
-        map_length = map_range
-    elif type(map_range) is list:
-        map_length = random.choice(map_range)
-    else:
-        map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
+#     if type(map_range) is int:
+#         map_length = map_range
+#     elif type(map_range) is list:
+#         map_length = random.choice(map_range)
+#     else:
+#         map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
 
-    env = Environment(fix_density=None, num_agents=num_agents, map_length=map_length)
+#     env = Environment(fix_density=None, num_agents=num_agents, map_length=map_length)
+
+#     for _ in tqdm(range(test_num)):
+#         tests['maps'].append(np.copy(env.map))
+#         tests['agents'].append(np.copy(env.agents_pos))
+#         tests['goals'].append(np.copy(env.goals_pos))
+
+#         actions = find_path(env)
+#         while actions is None:
+#             env.reset()
+#             tests['maps'][-1] = np.copy(env.map)
+#             tests['agents'][-1] = np.copy(env.agents_pos)
+#             tests['goals'][-1] = np.copy(env.goals_pos)
+#             actions = find_path(env)
+
+#         tests['opt_steps'].append(len(actions))
+
+#         if type(agent_range) is int:
+#             num_agents = agent_range
+#         elif type(agent_range) is list:
+#             num_agents = random.choice(agent_range)
+#         else:
+#             num_agents = random.randint(agent_range[0], agent_range[1])
+
+#         if type(map_range) is int:
+#             map_length = map_range
+#         elif type(map_range) is list:
+#             map_length = random.choice(map_range)
+#         else:
+#             map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
+
+#         env.reset(num_agents=num_agents, map_length=map_length)
+
+#     tests['opt_mean_steps'] = sum(tests['opt_steps']) / len(tests['opt_steps'])
+
+#     with open(name, 'wb') as f:
+#         pickle.dump(tests, f)
+
+def create_test(num_agents:int, map_length:int, density=None):
+
+    name = './test{}_{}_{}.pkl'.format(num_agents, map_length, density)
+
+    tests = {'maps': [], 'agents': [], 'goals': []}
+
+
+    env = Environment(fix_density=density, num_agents=num_agents, map_length=map_length)
 
     for _ in tqdm(range(test_num)):
         tests['maps'].append(np.copy(env.map))
         tests['agents'].append(np.copy(env.agents_pos))
         tests['goals'].append(np.copy(env.goals_pos))
 
-        actions = find_path(env)
-        while actions is None:
-            env.reset()
-            tests['maps'][-1] = np.copy(env.map)
-            tests['agents'][-1] = np.copy(env.agents_pos)
-            tests['goals'][-1] = np.copy(env.goals_pos)
-            actions = find_path(env)
-
-        tests['opt_steps'].append(len(actions))
-
-        if type(agent_range) is int:
-            num_agents = agent_range
-        elif type(agent_range) is list:
-            num_agents = random.choice(agent_range)
-        else:
-            num_agents = random.randint(agent_range[0], agent_range[1])
-
-        if type(map_range) is int:
-            map_length = map_range
-        elif type(map_range) is list:
-            map_length = random.choice(map_range)
-        else:
-            map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
-
         env.reset(num_agents=num_agents, map_length=map_length)
 
-    tests['opt_mean_steps'] = sum(tests['opt_steps']) / len(tests['opt_steps'])
 
     with open(name, 'wb') as f:
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test16_40.pkl'):
+def test_model(test_case='test16_40_0.3.pkl'):
 
     network = Network()
     network.eval()
     network.to(device)
 
-    write_log = False
-    title = 'standard reward'
-    if write_log and title is not None:
-        with open("test_log.txt","a") as f:
-            f.write('\n\n---{}---\n\n'.format(title))
-
-
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 525000
+    model_name = 462500
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -107,7 +120,6 @@ def test_model(test_case='test16_40.pkl'):
         show_steps = 100
 
         fail = 0
-        optimal = 0
         steps = []
 
         for i in range(test_num):
@@ -140,29 +152,17 @@ def test_model(test_case='test16_40.pkl'):
                 if show:
                     print(i)
 
-            if env.steps == tests['opt_steps'][i]:
-                optimal += 1
 
             if i == case and show:
                 env.close(True)
         
         f_rate = (test_num-fail)/test_num
-        o_rate = optimal/test_num
         mean_steps = sum(steps)/test_num
 
         print('--------------{}---------------'.format(model_name))
         print('finish: %.4f' %f_rate)
-        print('optimal: %.4f' %o_rate)
         print('mean steps: %.2f' %mean_steps)
-        print('optimal mean steps: %.2f' %tests['opt_mean_steps'])
 
-        if write_log:
-            with open("test_log.txt","a") as f:
-                f.write('--------------{}---------------\n'.format(model_name))
-                f.write('finish: %.4f\n' %f_rate)
-                f.write('optimal: %.4f\n' %o_rate)
-                f.write('mean steps: %.2f\n' %mean_steps)
-                f.write('optimal mean steps: %.2f\n' %tests['opt_mean_steps'])
 
         model_name -= config.save_interval
 
@@ -230,7 +230,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(16, 40, 0.3)
+    create_test(16, 40, 0.3)
     test_model()
     # make_animation()
     # create_test(1, 20)
