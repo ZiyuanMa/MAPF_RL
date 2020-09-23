@@ -13,9 +13,9 @@ import random
 import argparse
 from typing import Union
 import config
-torch.manual_seed(0)
-np.random.seed(0)
-random.seed(0)
+torch.manual_seed(1)
+np.random.seed(1)
+random.seed(1)
 test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = torch.device('cpu')
@@ -106,7 +106,6 @@ def test_model(num_agents, test_case='test16_40.pkl'):
         show_steps = 30
 
         fail = 0
-        optimal = 0
         steps = []
 
         for i in range(test_num):
@@ -139,29 +138,21 @@ def test_model(num_agents, test_case='test16_40.pkl'):
                 if show:
                     print(i)
 
-            if env.steps == tests['opt_steps'][i]:
-                optimal += 1
-
             if i == case and show:
                 env.close(True)
         
         f_rate = (test_num-fail)/test_num
-        o_rate = optimal/test_num
         mean_steps = sum(steps)/test_num
 
         print('--------------{}---------------'.format(model_name))
         print('finish: %.4f' %f_rate)
-        print('optimal: %.4f' %o_rate)
         print('mean steps: %.2f' %mean_steps)
-        print('optimal mean steps: %.2f' %tests['opt_mean_steps'])
 
         if write_log:
             with open("test_log.txt","a") as f:
                 f.write('--------------{}---------------\n'.format(model_name))
                 f.write('finish: %.4f\n' %f_rate)
-                f.write('optimal: %.4f\n' %o_rate)
                 f.write('mean steps: %.2f\n' %mean_steps)
-                f.write('optimal mean steps: %.2f\n' %tests['opt_mean_steps'])
 
         model_name += config.save_interval
 
