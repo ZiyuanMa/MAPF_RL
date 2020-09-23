@@ -79,23 +79,17 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(num_agents, test_case='test16_40.pkl'):
+def test_model(test_case='test32_40_0.3.pkl'):
 
     network = Network()
     network.eval()
     network.to(device)
 
-    write_log = True
-    title = 'standard reward'
-    if write_log and title is not None:
-        with open("test_log.txt","a") as f:
-            f.write('\n\n---{}---\n\n'.format(title))
-
 
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = config.save_interval
+    model_name = 200000
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -148,13 +142,7 @@ def test_model(num_agents, test_case='test16_40.pkl'):
         print('finish: %.4f' %f_rate)
         print('mean steps: %.2f' %mean_steps)
 
-        if write_log:
-            with open("test_log.txt","a") as f:
-                f.write('--------------{}---------------\n'.format(model_name))
-                f.write('finish: %.4f\n' %f_rate)
-                f.write('mean steps: %.2f\n' %mean_steps)
-
-        model_name += config.save_interval
+        model_name -= config.save_interval
 
 def make_animation():
     color_map = np.array([[255, 255, 255],   # white
@@ -221,6 +209,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(8, 20)
-    test_model(16)
+    test_model()
     # make_animation()
     
