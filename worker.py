@@ -8,6 +8,7 @@ import torch.backends.cudnn as cudnn
 cudnn.benchmark=True
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
+from torch.cuda.amp import GradScaler, autocast
 import numpy as np
 from copy import deepcopy
 from typing import List, Tuple
@@ -36,8 +37,8 @@ class GlobalBuffer:
 
         self.obs_buf = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, *config.obs_shape), dtype=np.bool)
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
-        self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
-        self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.latent_dim), dtype=np.float32)
+        self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float16)
+        self.hid_buf = np.zeros((config.max_steps*capacity, config.max_num_agetns, config.latent_dim), dtype=np.float16)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
         self.comm_mask = np.zeros(((config.max_steps+1)*capacity, config.max_num_agetns, config.max_num_agetns), dtype=np.bool)
@@ -167,7 +168,7 @@ class GlobalBuffer:
             weights = np.power(priorities/min_p, -self.beta)
 
             data = (
-                torch.from_numpy(np.stack(b_obs).astype(np.float32)),
+                torch.from_numpy(np.stack(b_obs).astype(np.float16)),
                 torch.LongTensor(b_action).unsqueeze(1),
                 torch.FloatTensor(b_reward).unsqueeze(1),
 
@@ -285,6 +286,7 @@ class Learner:
         self.learning_thread.start()
 
     def train(self):
+        scaler = GradScaler()
         while not ray.get(self.buffer.check_done.remote()):
             for i in range(1, 10001):
 
@@ -328,9 +330,12 @@ class Learner:
                             b_action_ = self.model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).argmax(1, keepdim=True)
                             b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).gather(1, b_action_)
                         else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
+                            with autocast():
+                                b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
 
-                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden, b_comm_mask[:, :-config.forward_steps]).gather(1, b_action)
+                    with autocast():
+                        b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden, b_comm_mask[:, :-config.forward_steps]).gather(1, b_action)
+
 
                     td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
@@ -340,16 +345,18 @@ class Learner:
 
                 self.optimizer.zero_grad()
 
-                loss.backward()
+                # loss.backward()
                 self.loss = loss.item()
-                # scaler.scale(loss).backward()
+                scaler.scale(loss).backward()
 
+
+                scaler.unscale_(self.optimizer)
                 nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
-                self.optimizer.step()
-                # scaler.step(optimizer)
-                # scaler.update()
-                self.scheduler.step()
+                # self.optimizer.step()
+                scaler.step(self.optimizer)
+                scaler.update()
+                # self.scheduler.step()
 
 
                 # store new weights in shared memory

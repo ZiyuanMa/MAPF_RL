@@ -1,7 +1,7 @@
 import random
 from typing import List
 import numpy as np
-from numba import int32, float32
+# from numba import int32, float32
 import torch
 import math
 from dataclasses import dataclass
@@ -136,8 +136,8 @@ class LocalBuffer:
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, self.num_agents, *config.obs_shape), dtype=np.bool)
         self.act_buf = np.zeros((size), dtype=np.uint8)
-        self.rew_buf = np.zeros((size), dtype=np.float32)
-        self.hid_buf = np.zeros((size,  self.num_agents, config.latent_dim), dtype=np.float32)
+        self.rew_buf = np.zeros((size), dtype=np.float16)
+        self.hid_buf = np.zeros((size,  self.num_agents, config.latent_dim), dtype=np.float16)
         self.comm_buf = np.zeros((size+1, num_agents, num_agents), dtype=np.bool)
 
         self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
@@ -154,7 +154,7 @@ class LocalBuffer:
         return self.size
 
 
-    def add(self, q_val:np.ndarray, action:int, reward:float, next_obs:np.ndarray, hidden, comm_mask):
+    def add(self, q_val:np.ndarray, action:int, reward, next_obs:np.ndarray, hidden, comm_mask):
 
         assert self.size < self.capacity
 

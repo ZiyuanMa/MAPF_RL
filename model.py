@@ -264,6 +264,8 @@ class Network(nn.Module):
         # hidden size: batch_size x self.latent_dim
         hidden = hidden_buffer[torch.arange(config.batch_size), steps-1]
 
+        # print(hidden.dtype)
+
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
