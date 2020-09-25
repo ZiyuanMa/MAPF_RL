@@ -6,28 +6,11 @@ import torch
 import math
 from dataclasses import dataclass
 
+
 import config
 
 discounts = np.array([ 0.99**i for i in range(config.max_steps)])
 
-def quantile_huber_loss(curr_dist, target_dist, kappa=1.0):
-    curr_dist = np.expand_dims(curr_dist, 1)
-    target_dist = np.expand_dims(target_dist, 0)
-
-    td_errors = curr_dist - target_dist
-
-    abs_td_errors = np.abs(td_errors)
-
-    flag = (abs_td_errors < kappa).astype(np.float32)
-    element_wise_huber_loss = flag * (abs_td_errors**2) * 0.5 + (1 - flag) * kappa * (abs_td_errors - 0.5*kappa)
-
-    taus = np.expand_dims(np.arange(1/400, 1, 1/200), 1)
-
-    element_wise_quantile_huber_loss = np.abs(taus - (td_errors < 0).astype(np.float32)) * element_wise_huber_loss / kappa
-
-    quantile_huber_loss = np.mean(np.sum(element_wise_quantile_huber_loss, axis=0), axis=0)
-
-    return quantile_huber_loss
 
 
 class SumTree:

@@ -22,12 +22,12 @@ obs_shape = (6,9,9)
 training_times = 1000000
 save_interval=2500
 gamma=0.99
-batch_size=128
+batch_size=64
 learning_starts=50000
 target_network_update_freq=2500
 save_path='./models'
 max_steps = 256
-bt_steps = 20
+bt_steps = 16
 load_model = None
 
 local_buffer_size = max_steps
@@ -38,8 +38,6 @@ actor_update_steps = 400
 # gradient norm clipping
 grad_norm_dqn=40
 
-# distributional dqn
-distributional = False
 
 # prioritized replay
 prioritized_replay_alpha=0.6
@@ -50,7 +48,7 @@ double_q = False
 
 # adaptive learning
 init_set = (1, 10)
-max_num_agetns = 12
+max_num_agetns = 8
 max_map_lenght = 40
 pass_rate = 0.9
 

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import config
+from torch.cuda.amp import autocast
 
 class ResBlock(nn.Module):
     def __init__(self, channel, type='linear', bn=False):
@@ -71,10 +72,11 @@ class MultiHeadAttention(nn.Module):
         assert attn_mask.size() == (batch_size, self.num_heads, num_agents, num_agents)
 
         # context: [batch_size x num_heads x num_agents x output_dim]
-        scores = torch.matmul(q_s, k_s.transpose(-1, -2)) / (self.output_dim**0.5) # scores : [batch_size x n_heads x num_agents x num_agents]
-
-        scores.masked_fill_(attn_mask, -1e9) # Fills elements of self tensor with value where mask is one.
-        attn = F.softmax(scores, dim=-1)
+        with autocast(enabled=False):
+            scores = torch.matmul(q_s.float(), k_s.float().transpose(-1, -2)) / (self.output_dim**0.5) # scores : [batch_size x n_heads x num_agents x num_agents]
+            scores.masked_fill_(attn_mask, -1e9) # Fills elements of self tensor with value where mask is one.
+            attn = F.softmax(scores, dim=-1)
+            
         # print(attn.shape)
         # print(v_s.shape)
         context = torch.matmul(attn, v_s)
@@ -135,12 +137,11 @@ class CommBlock(nn.Module):
 
 
 class Network(nn.Module):
-    def __init__(self, cnn_channel=config.cnn_channel, distributional=config.distributional):
+    def __init__(self, cnn_channel=config.cnn_channel):
 
         super().__init__()
 
         self.latent_dim = config.latent_dim
-        self.distributional = distributional
         self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
@@ -165,12 +166,8 @@ class Network(nn.Module):
         self.comm = CommBlock(self.latent_dim)
 
         # dueling q structure
-        if distributional:
-            self.adv = nn.Linear(self.latent_dim, 5*self.num_quant)
-            self.state = nn.Linear(self.latent_dim, 1*self.num_quant)
-        else:
-            self.adv = nn.Linear(self.latent_dim, 5)
-            self.state = nn.Linear(self.latent_dim, 1)
+        self.adv = nn.Linear(self.latent_dim, 5)
+        self.state = nn.Linear(self.latent_dim, 1)
 
         self.hidden = None
 
@@ -217,24 +214,17 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            # batch_size x 5 x 200
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
-            actions = q_val.mean(2).argmax(1).tolist()
-
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            # print(q_val.shape)
-            actions = torch.argmax(q_val, 1).tolist()
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        # print(q_val.shape)
+        actions = torch.argmax(q_val, 1).tolist()
 
         return actions, q_val.numpy(), hidden.numpy(), comm_mask.numpy()
 
     def reset(self):
         self.hidden = None
 
+    @autocast()
     def bootstrap(self, obs, steps, hidden, comm_mask):
         # comm_mask size: batch_size x bt_steps x num_agents x num_agents
         max_steps = obs.size(1)
@@ -269,11 +259,6 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
         return q_val
