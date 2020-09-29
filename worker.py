@@ -24,7 +24,6 @@ class GlobalBuffer:
         self.capacity = capacity
         self.size = 0
         self.ptr = 0
-        self.buffer = [ None for _ in range(capacity) ]
         self.priority_tree = SumTree(capacity*config.local_buffer_size)
         self.alpha = alpha
         self.beta = beta
@@ -125,12 +124,12 @@ class GlobalBuffer:
                 if local_idx < config.bt_steps-1:
                     obs = self.obs_buf[global_idx*(config.max_steps+1):idx+global_idx+1+steps]
                     comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+1+steps]
-                    hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
+                    hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float16)
 
                 elif local_idx == config.bt_steps-1:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+1+steps]
                     comm_mask = self.comm_mask[global_idx*(config.max_steps+1):idx+global_idx+1+steps]
-                    hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float32)
+                    hidden = np.zeros((config.max_num_agetns, config.latent_dim), dtype=np.float16)
 
                 else:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+1+steps]
@@ -265,10 +264,6 @@ class Learner:
         self.last_counter = 0
         self.done = False
         self.loss = 0
-        taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
-        taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200, 1)
-        self.taus = taus.expand(config.batch_size, 200, 200)
-
         self.store_weights()
 
     def get_weights(self):
@@ -304,13 +299,7 @@ class Learner:
                 
                 with torch.no_grad():
                     # choose max q index from next observation
-                    # double q-learning
-                    if config.double_q:
-                        b_action_ = self.model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).argmax(1, keepdim=True)
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).gather(1, b_action_)
-                    else:
-
-                        b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
+                    b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden, b_comm_mask).max(1, keepdim=True)[0]
 
                 b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden, b_comm_mask[:, :-config.forward_steps]).gather(1, b_action)
 
@@ -336,7 +325,7 @@ class Learner:
 
 
                 # store new weights in shared memory
-                if i % 5  == 0:
+                if i % 2  == 0:
                     self.store_weights()
 
                 self.buffer.update_priorities.remote(idxes, priorities, old_ptr)

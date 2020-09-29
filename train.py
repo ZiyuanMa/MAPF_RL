@@ -37,7 +37,7 @@ if __name__ == '__main__':
     learner.run.remote()
     
     done = False
-    interval = 10
+    interval = 30
     while not done:
         time.sleep(interval)
         

@@ -38,7 +38,6 @@ actor_update_steps = 400
 # gradient norm clipping
 grad_norm_dqn=40
 
-
 # prioritized replay
 prioritized_replay_alpha=0.6
 prioritized_replay_beta=0.4
