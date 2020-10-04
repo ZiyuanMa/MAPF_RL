@@ -321,7 +321,7 @@ class Learner:
                 # self.optimizer.step()
                 scaler.step(self.optimizer)
                 scaler.update()
-                # self.scheduler.step()
+                self.scheduler.step()
 
 
                 # store new weights in shared memory
@@ -336,9 +336,6 @@ class Learner:
                 if i % config.target_network_update_freq == 0:
                     self.tar_model.load_state_dict(self.model.state_dict())
                     torch.save(self.model.state_dict(), os.path.join(config.save_path, '{}.pth'.format(self.counter)))
-                
-                # if i == 10000:
-                #     config.imitation_ratio = 0
 
         self.done = True
     def huber_loss(self, td_error, kappa=1.0):
