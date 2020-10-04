@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence
+from torch.cuda.amp import autocast
 import config
 
 class ResBlock(nn.Module):
@@ -124,6 +125,7 @@ class Network(nn.Module):
     def reset(self):
         self.hidden = None
 
+    @autocast()
     def bootstrap(self, obs, steps, hidden):
         batch_size = obs.size(0)
         step = obs.size(1)

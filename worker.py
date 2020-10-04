@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 from torch.optim.lr_scheduler import MultiStepLR
+from torch.cuda.amp import GradScaler
 import numpy as np
 from copy import deepcopy
 from typing import List, Tuple
@@ -33,8 +34,8 @@ class GlobalBuffer:
 
         self.obs_buf = np.zeros(((config.max_steps+1)*capacity, *config.obs_shape), dtype=np.bool)
         self.act_buf = np.zeros((config.max_steps*capacity), dtype=np.uint8)
-        self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float32)
-        self.hid_buf = np.zeros((config.max_steps*capacity, config.latent_dim), dtype=np.float32)
+        self.rew_buf = np.zeros((config.max_steps*capacity), dtype=np.float16)
+        self.hid_buf = np.zeros((config.max_steps*capacity, config.latent_dim), dtype=np.float16)
         self.done_buf = np.zeros(capacity, dtype=np.bool)
         self.size_buf = np.zeros(capacity, dtype=np.uint)
 
@@ -152,12 +153,12 @@ class GlobalBuffer:
             weights = np.power(priorities/min_p, -self.beta)
 
             data = (
-                torch.from_numpy(np.stack(b_obs).astype(np.float32)),
+                torch.from_numpy(np.stack(b_obs).astype(np.float16)),
                 torch.LongTensor(b_action).unsqueeze(1),
-                torch.FloatTensor(b_reward).unsqueeze(1),
+                torch.HalfTensor(b_reward).unsqueeze(1),
 
-                torch.FloatTensor(b_done).unsqueeze(1),
-                torch.FloatTensor(b_steps).unsqueeze(1),
+                torch.HalfTensor(b_done).unsqueeze(1),
+                torch.HalfTensor(b_steps).unsqueeze(1),
                 b_bt_steps,
                 torch.from_numpy(np.stack(b_hidden)),
 
@@ -247,9 +248,6 @@ class Learner:
         self.last_counter = 0
         self.done = False
         self.loss = 0
-        taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
-        taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200, 1)
-        self.taus = taus.expand(config.batch_size, 200, 200)
 
         self.store_weights()
 
@@ -267,7 +265,7 @@ class Learner:
         self.learning_thread.start()
 
     def train(self):
-        batch_idx = torch.arange(config.batch_size)
+        scaler = GradScaler()
 
         while not ray.get(self.buffer.check_done.remote()):
             for i in range(1, 10001):
@@ -282,56 +280,30 @@ class Learner:
 
                 b_next_bt_steps = [ bt_steps+steps.item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
 
-                if config.distributional:
+                with torch.no_grad():
 
-                    with torch.no_grad():
-                        b_next_dist = self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden)
-                        b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
-                        b_next_dist = b_next_dist[batch_idx, b_next_action, :]
+                    b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
 
-                    b_dist = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden)
-                    b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
+                b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
 
-                    b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
+                td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
+                priorities = td_error.detach().squeeze().abs().clamp(1e-6).cpu().numpy()
 
-                    priorities = (b_target_dist.mean(1)-b_dist.mean(1)).detach().squeeze().abs().cpu().clamp(1e-6).numpy()
-                    # batch_size * N * 1
-                    b_dist = b_dist.unsqueeze(2)
-                    # batch_size * 1 * N
-                    b_target_dist = b_target_dist.unsqueeze(1)
-
-                    td_errors = b_target_dist-b_dist
-                    _, loss = self.quantile_huber_loss(td_errors, weights=weights)
-
-                else:
-
-                    with torch.no_grad():
-                        # choose max q index from next observation
-                        # double q-learning
-                        if config.double_q:
-                            b_action_ = self.model.bootstrap(b_obs, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden).gather(1, b_action_)
-                        else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
-
-                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
-
-                    td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
-
-                    priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
-
-                    loss = (weights * self.huber_loss(td_error)).mean()
+                loss = (weights * self.huber_loss(td_error)).mean()
 
                 self.optimizer.zero_grad()
 
                 loss.backward()
                 self.loss = loss.item()
+                scaler.scale(loss).backward()
 
-
+                scaler.unscale_(self.optimizer)
                 nn.utils.clip_grad_norm_(self.model.parameters(), 40)
 
-                self.optimizer.step()
+                # self.optimizer.step()
+                scaler.step(self.optimizer)
+                scaler.update()
  
                 self.scheduler.step()
 
@@ -354,30 +326,11 @@ class Learner:
                 #     config.imitation_ratio = 0
 
         self.done = True
+
     def huber_loss(self, td_error, kappa=1.0):
         abs_td_error = td_error.abs()
         flag = (abs_td_error < kappa).float()
         return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
-
-    def quantile_huber_loss(self, td_errors, weights=None, kappa=1.0):
-
-        element_wise_huber_loss = self.huber_loss(td_errors, kappa)
-        assert element_wise_huber_loss.shape == (config.batch_size, 200, 200)
-
-        element_wise_quantile_huber_loss = torch.abs(self.taus - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
-        assert element_wise_quantile_huber_loss.shape == (config.batch_size, 200, 200)
-
-        batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
-        assert batch_quantile_huber_loss.shape == (config.batch_size, 1)
-
-        priorities = batch_quantile_huber_loss.detach().cpu().squeeze().clamp(1e-6).numpy()
-
-        if weights is not None:
-            quantile_huber_loss = (batch_quantile_huber_loss * weights).mean()
-        else:
-            quantile_huber_loss = batch_quantile_huber_loss.mean()
-
-        return priorities, quantile_huber_loss
 
     def stats(self, interval:int):
         print('number of updates: {}'.format(self.counter))

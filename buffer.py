@@ -8,27 +8,6 @@ from dataclasses import dataclass
 
 import config
 
-discounts = np.array([ 0.99**i for i in range(config.max_steps)])
-
-def quantile_huber_loss(curr_dist, target_dist, kappa=1.0):
-    curr_dist = np.expand_dims(curr_dist, 1)
-    target_dist = np.expand_dims(target_dist, 0)
-
-    td_errors = curr_dist - target_dist
-
-    abs_td_errors = np.abs(td_errors)
-
-    flag = (abs_td_errors < kappa).astype(np.float32)
-    element_wise_huber_loss = flag * (abs_td_errors**2) * 0.5 + (1 - flag) * kappa * (abs_td_errors - 0.5*kappa)
-
-    taus = np.expand_dims(np.arange(1/400, 1, 1/200), 1)
-
-    element_wise_quantile_huber_loss = np.abs(taus - (td_errors < 0).astype(np.float32)) * element_wise_huber_loss / kappa
-
-    quantile_huber_loss = np.mean(np.sum(element_wise_quantile_huber_loss, axis=0), axis=0)
-
-    return quantile_huber_loss
-
 
 class SumTree:
 
@@ -39,7 +18,7 @@ class SumTree:
             layer += 1
         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
         self.layer = layer
-        self.tree = np.zeros(2**layer-1, dtype=np.float64)
+        self.tree = np.zeros(2**layer-1, dtype=np.float32)
         self.capacity = capacity
         self.size = 0
 
@@ -74,7 +53,7 @@ class SumTree:
         sum = self.tree[0]
         interval = sum/batch_size
 
-        prefixsums = np.arange(0, sum, interval, dtype=np.float64) + np.random.uniform(0, interval, batch_size)
+        prefixsums = np.arange(0, sum, interval, dtype=np.float32) + np.random.uniform(0, interval, batch_size)
         if prefixsums[0] == 0:
             prefixsums[0] = 1e-5
 
@@ -136,8 +115,8 @@ class LocalBuffer:
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
         self.act_buf = np.zeros((size), dtype=np.uint8)
-        self.rew_buf = np.zeros((size), dtype=np.float32)
-        self.hid_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
+        self.rew_buf = np.zeros((size), dtype=np.float16)
+        self.hid_buf = np.zeros((size, config.latent_dim), dtype=np.float16)
 
         self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
 
@@ -179,7 +158,7 @@ class LocalBuffer:
         self.q_buf = self.q_buf[:self.size+1]
 
 
-        self.td_errors = np.zeros(self.capacity, dtype=np.float64)
+        self.td_errors = np.zeros(self.capacity, dtype=np.float32)
 
 
         q_max = np.max(self.q_buf[:self.size], axis=1)
