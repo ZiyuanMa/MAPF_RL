@@ -294,7 +294,7 @@ class Learner:
 
                 self.optimizer.zero_grad()
 
-                loss.backward()
+                # loss.backward()
                 self.loss = loss.item()
                 scaler.scale(loss).backward()
 

@@ -1,7 +1,6 @@
 import random
 from typing import List
 import numpy as np
-from numba import int32, float32
 import torch
 import math
 from dataclasses import dataclass
@@ -18,7 +17,7 @@ class SumTree:
             layer += 1
         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
         self.layer = layer
-        self.tree = np.zeros(2**layer-1, dtype=np.float32)
+        self.tree = np.zeros(2**layer-1, dtype=np.float64)
         self.capacity = capacity
         self.size = 0
 
@@ -53,7 +52,8 @@ class SumTree:
         sum = self.tree[0]
         interval = sum/batch_size
 
-        prefixsums = np.arange(0, sum, interval, dtype=np.float32) + np.random.uniform(0, interval, batch_size)
+        prefixsums = np.arange(0, sum, interval, dtype=np.float64) + np.random.uniform(0, interval, batch_size)
+
         if prefixsums[0] == 0:
             prefixsums[0] = 1e-5
 
@@ -158,7 +158,7 @@ class LocalBuffer:
         self.q_buf = self.q_buf[:self.size+1]
 
 
-        self.td_errors = np.zeros(self.capacity, dtype=np.float32)
+        self.td_errors = np.zeros(self.capacity, dtype=np.float64)
 
 
         q_max = np.max(self.q_buf[:self.size], axis=1)
