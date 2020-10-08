@@ -22,7 +22,7 @@ class SumTree:
             layer += 1
         assert 2**(layer-1) == capacity, 'buffer size only support power of 2 size'
         self.layer = layer
-        self.tree = np.zeros(2**layer-1, dtype=np.float32)
+        self.tree = np.zeros(2**layer-1, dtype=np.float64)
         self.capacity = capacity
         self.size = 0
 
@@ -167,7 +167,7 @@ class LocalBuffer:
         self.q_buf = self.q_buf[:self.size+1]
 
 
-        self.td_errors = np.zeros(self.capacity, dtype=np.float32)
+        self.td_errors = np.zeros(self.capacity, dtype=np.float64)
 
 
         q_max = np.max(self.q_buf[:self.size], axis=1)
