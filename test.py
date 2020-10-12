@@ -89,9 +89,9 @@ def test_model(test_case='test32_40_0.3.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 187500
-    while os.path.exists('./models/{}.pth'.format(model_name)):
-        state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
+    model_name = 200000
+    while os.path.exists('./models2/{}.pth'.format(model_name)):
+        state_dict = torch.load('./models2/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
 
