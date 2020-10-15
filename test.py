@@ -230,7 +230,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    create_test(16, 40, 0.3)
-    test_model()
+    create_test(64, 40, 0.3)
+    # test_model()
     # make_animation()
     # create_test(1, 20)
