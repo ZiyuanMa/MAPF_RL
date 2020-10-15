@@ -113,7 +113,7 @@ class CommBlock(nn.Module):
         # print(comm_mask)
         attn_mask = comm_mask==False
 
-        for _ in range(2):
+        for _ in range(config.num_comm_layers):
 
             info = self.self_attn(latent, attn_mask=attn_mask)
             # latent = attn_layer(latent, attn_mask=attn_mask)
