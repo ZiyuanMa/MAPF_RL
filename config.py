@@ -59,7 +59,7 @@ max_map_lenght = 40
 pass_rate = 0.9
 
 # dqn network setting
-cnn_channel = 64
+cnn_channel = 128
 obs_latent_dim = 240
 pos_latent_dim = 12
 act_latent_dim = 4
