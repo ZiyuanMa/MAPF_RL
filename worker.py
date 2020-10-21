@@ -273,7 +273,7 @@ class Learner:
             state_dict[k] = v.cpu()
         self.weights_id = ray.put(state_dict)
 
-    def run(self):/-*
+    def run(self):
         self.learning_thread = threading.Thread(target=self.train, daemon=True)
         self.learning_thread.start()
 
