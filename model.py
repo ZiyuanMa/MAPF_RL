@@ -53,6 +53,7 @@ class Network(nn.Module):
         self.distributional = distributional
         self.num_quant = 200
         self.output_shape = (64, 5, 5)
+        self.device = torch.device('cuda')
 
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(self.obs_dim, 128, 3, 1),
