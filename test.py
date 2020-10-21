@@ -18,7 +18,7 @@ torch.manual_seed(1)
 np.random.seed(1)
 random.seed(1)
 test_num = 200
-device = torch.device('cuda')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = torch.device('cpu')
 
 # def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple], density=None):
