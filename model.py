@@ -44,15 +44,13 @@ class ResBlock(nn.Module):
 class Network(nn.Module):
     def __init__(self, cnn_channel=config.cnn_channel,
                 obs_dim=config.obs_shape[0], obs_latent_dim=config.obs_latent_dim,
-                pos_dim=config.pos_shape[0], pos_latent_dim=config.pos_latent_dim,
-                distributional=config.distributional):
+                pos_dim=config.pos_shape[0], pos_latent_dim=config.pos_latent_dim):
 
         super().__init__()
 
         self.obs_dim = obs_dim
         self.pos_dim = pos_dim
         self.latent_dim = obs_latent_dim + pos_latent_dim
-        self.distributional = distributional
         self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
@@ -83,12 +81,8 @@ class Network(nn.Module):
         self.recurrent = nn.GRU(config.obs_latent_dim+config.pos_latent_dim, config.obs_latent_dim+config.pos_latent_dim, batch_first=True)
 
         # dueling q structure
-        if distributional:
-            self.adv = nn.Linear(config.latent_dim, 5*self.num_quant)
-            self.state = nn.Linear(config.latent_dim, 1*self.num_quant)
-        else:
-            self.adv = nn.Linear(config.latent_dim, 5)
-            self.state = nn.Linear(config.latent_dim, 1)
+        self.adv = nn.Linear(config.latent_dim, 5)
+        self.state = nn.Linear(config.latent_dim, 1)
 
         self.hidden = None
 
@@ -116,18 +110,10 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            # batch_size x 5 x 200
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
-            actions = q_val.mean(2).argmax(1).tolist()
-
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            # print(q_val.shape)
-            actions = torch.argmax(q_val, 1).tolist()
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        # print(q_val.shape)
+        actions = torch.argmax(q_val, 1).tolist()
 
         return actions, q_val.numpy(), self.hidden[0].numpy()
 
@@ -164,12 +150,6 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
         return q_val

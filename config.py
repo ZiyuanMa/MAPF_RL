@@ -1,7 +1,6 @@
 ############################################################
 ####################    environment     ####################
 ############################################################
-env_level = 0
 map_length = 50
 num_agents = 2
 obs_radius = 4
@@ -42,9 +41,6 @@ grad_norm_dqn=40
 # n-step forward
 forward_steps = 2
 
-# distributional dqn
-distributional = False
-
 # prioritized replay
 prioritized_replay_alpha=0.6
 prioritized_replay_beta=0.4
@@ -59,7 +55,7 @@ max_map_lenght = 40
 pass_rate = 0.9
 
 # dqn network setting
-cnn_channel = 128
+cnn_channel = 96
 obs_latent_dim = 245
 pos_latent_dim = 11
 latent_dim = obs_latent_dim+pos_latent_dim

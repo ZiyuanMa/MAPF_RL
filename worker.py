@@ -258,9 +258,6 @@ class Learner:
         self.last_counter = 0
         self.done = False
         self.loss = 0
-        taus = torch.arange(0, 200+1, device=self.device, dtype=torch.float32) / 200
-        taus = ((taus[1:] + taus[:-1]) / 2.0).view(1, 200, 1)
-        self.taus = taus.expand(config.batch_size, 200, 200)
 
         self.store_weights()
 
@@ -291,44 +288,16 @@ class Learner:
 
                 b_next_bt_steps = [ bt_steps+steps.item() for bt_steps, steps in zip(b_bt_steps, b_steps) ]
 
-                if config.distributional:
-                    raise NotImplementedError
-                    # with torch.no_grad():
-                    #     b_next_dist = self.tar_model.bootstrap(b_obs[:, 1:], b_pos[:, 1:], b_next_bt_steps, b_next_hidden)
-                    #     b_next_action = b_next_dist.mean(dim=2).argmax(dim=1)
-                    #     b_next_dist = b_next_dist[batch_idx, b_next_action, :]
+                with torch.no_grad():
+                    b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
 
-                    # b_dist = self.model.bootstrap(b_obs, b_pos, b_bt_steps, b_hidden)
-                    # b_dist = b_dist[batch_idx, torch.squeeze(b_action), :]
+                b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_pos[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
 
-                    # b_target_dist = b_reward + (1-b_done)*(config.gamma**b_steps)*b_next_dist
+                td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
 
-                    # # batch_size * N * 1
-                    # b_dist = b_dist.unsqueeze(2)
-                    # # batch_size * 1 * N
-                    # b_target_dist = b_target_dist.unsqueeze(1)
+                priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
 
-                    # td_errors = b_target_dist-b_dist
-                    # priorities, loss = self.quantile_huber_loss(td_errors, weights=weights)
-
-                else:
-                    # print(b_next_bt_steps)
-                    with torch.no_grad():
-                        # choose max q index from next observation
-                        # double q-learning
-                        if config.double_q:
-                            b_action_ = self.model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).argmax(1, keepdim=True)
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).gather(1, b_action_)
-                        else:
-                            b_q_ = (1 - b_done) * self.tar_model.bootstrap(b_obs, b_pos, b_next_bt_steps, b_hidden).max(1, keepdim=True)[0]
-
-                    b_q = self.model.bootstrap(b_obs[:, :-config.forward_steps], b_pos[:, :-config.forward_steps], b_bt_steps, b_hidden).gather(1, b_action)
-
-                    td_error = (b_q - (b_reward + (0.99 ** b_steps) * b_q_))
-
-                    priorities = td_error.detach().squeeze().abs().cpu().clamp(1e-6).numpy()
-
-                    loss = (weights * self.huber_loss(td_error)).mean()
+                loss = (weights * self.huber_loss(td_error)).mean()
 
                 self.optimizer.zero_grad()
 
@@ -367,25 +336,6 @@ class Learner:
         flag = (abs_td_error < kappa).float()
         return flag * abs_td_error.pow(2) * 0.5 + (1 - flag) * (abs_td_error - 0.5)
 
-    def quantile_huber_loss(self, td_errors, weights=None, kappa=1.0):
-
-        element_wise_huber_loss = self.huber_loss(td_errors, kappa)
-        assert element_wise_huber_loss.shape == (config.batch_size, 200, 200)
-
-        element_wise_quantile_huber_loss = torch.abs(self.taus - (td_errors.detach() < 0).float()) * element_wise_huber_loss / kappa
-        assert element_wise_quantile_huber_loss.shape == (config.batch_size, 200, 200)
-
-        batch_quantile_huber_loss = element_wise_quantile_huber_loss.sum(dim=1).mean(dim=1, keepdim=True)
-        assert batch_quantile_huber_loss.shape == (config.batch_size, 1)
-
-        priorities = batch_quantile_huber_loss.detach().cpu().clamp(1e-6).numpy()
-
-        if weights is not None:
-            quantile_huber_loss = (batch_quantile_huber_loss * weights).mean()
-        else:
-            quantile_huber_loss = batch_quantile_huber_loss.mean()
-
-        return priorities, quantile_huber_loss
 
     def stats(self, interval:int):
         print('number of updates: {}'.format(self.counter))
