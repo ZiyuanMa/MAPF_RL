@@ -40,23 +40,17 @@ device = torch.device('cpu')
 #         pickle.dump(tests, f)
 
 
-def test_model(test_case='test1_50.pkl'):
+def test_model(test_case='test32_40_0.3.pkl'):
 
     network = Network()
     network.eval()
     network.to(device)
 
-    write_log = False
-    title = 'standard reward'
-    if write_log and title is not None:
-        with open("test_log.txt","a") as f:
-            f.write('\n\n---{}---\n\n'.format(title))
-
 
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 62000
+    model_name = 507500
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -67,7 +61,6 @@ def test_model(test_case='test1_50.pkl'):
         show_steps = 100
 
         fail = 0
-        optimal = 0
         steps = []
 
         for i in range(test_num):
@@ -76,15 +69,13 @@ def test_model(test_case='test1_50.pkl'):
             done = False
             network.reset()
 
-            act_embed = torch.zeros((env.num_agents, 5), dtype=torch.float32)
-
             while not done and env.steps < config.max_steps:
                 if i == case and show and env.steps < show_steps:
                     env.render()
 
                 obs_pos = env.observe()
 
-                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]), act_embed)
+                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
 
                 if i == case and show and env.steps < show_steps:
                     print(q_vals)
@@ -94,9 +85,6 @@ def test_model(test_case='test1_50.pkl'):
 
                 _, _, done, _ = env.step(actions)
                 # print(done)
-                act_embed = torch.zeros((env.num_agents, 5), dtype=torch.float32)
-                for agent_id, act_id in enumerate(actions):
-                    act_embed[agent_id, act_id] = 1
                     
             steps.append(env.steps)
 
@@ -105,8 +93,7 @@ def test_model(test_case='test1_50.pkl'):
                 if show:
                     print(i)
 
-            if env.steps == tests['opt_steps'][i]:
-                optimal += 1
+
 
             if i == case and show:
                 env.close(True)
@@ -117,19 +104,10 @@ def test_model(test_case='test1_50.pkl'):
 
         print('--------------{}---------------'.format(model_name))
         print('finish: %.4f' %f_rate)
-        print('optimal: %.4f' %o_rate)
         print('mean steps: %.2f' %mean_steps)
-        print('optimal mean steps: %.2f' %tests['opt_mean_steps'])
 
-        if write_log:
-            with open("test_log.txt","a") as f:
-                f.write('--------------{}---------------\n'.format(model_name))
-                f.write('finish: %.4f\n' %f_rate)
-                f.write('optimal: %.4f\n' %o_rate)
-                f.write('mean steps: %.2f\n' %mean_steps)
-                f.write('optimal mean steps: %.2f\n' %tests['opt_mean_steps'])
 
-        model_name += config.save_interval
+        model_name -= config.save_interval
 
 def make_animation():
     color_map = np.array([[255, 255, 255],   # white
