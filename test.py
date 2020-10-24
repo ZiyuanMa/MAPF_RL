@@ -13,70 +13,31 @@ import random
 import argparse
 from typing import Union
 import config
-torch.manual_seed(0)
-np.random.seed(0)
-random.seed(0)
+torch.manual_seed(1)
+np.random.seed(1)
+random.seed(1)
 test_num = 200
 device = torch.device('cpu')
 # device = torch.device('cpu')
 
-def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple]):
+# def create_test(num_agents:int, map_length:int, density=None):
 
-    name = './test{}_{}.pkl'.format(agent_range, map_range)
+#     name = './test{}_{}_{}.pkl'.format(num_agents, map_length, density)
 
-    tests = {'maps': [], 'agents': [], 'goals': [], 'opt_steps': []}
+#     tests = {'maps': [], 'agents': [], 'goals': []}
 
-    if type(agent_range) is int:
-        num_agents = agent_range
-    elif type(agent_range) is list:
-        num_agents = random.choice(agent_range)
-    else:
-        num_agents = random.randint(agent_range[0], agent_range[1])
 
-    if type(map_range) is int:
-        map_length = map_range
-    elif type(map_range) is list:
-        map_length = random.choice(map_range)
-    else:
-        map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
+#     env = Environment(fix_density=density, num_agents=num_agents, map_length=map_length)
 
-    env = Environment(num_agents=num_agents, map_length=map_length)
+#     for _ in tqdm(range(test_num)):
+#         tests['maps'].append(np.copy(env.map))
+#         tests['agents'].append(np.copy(env.agents_pos))
+#         tests['goals'].append(np.copy(env.goals_pos))
 
-    for _ in range(test_num):
-        tests['maps'].append(np.copy(env.map))
-        tests['agents'].append(np.copy(env.agents_pos))
-        tests['goals'].append(np.copy(env.goals_pos))
+#         env.reset(num_agents=num_agents, map_length=map_length)
 
-        actions = find_path(env)
-        while actions is None:
-            env.reset()
-            tests['maps'][-1] = np.copy(env.map)
-            tests['agents'][-1] = np.copy(env.agents_pos)
-            tests['goals'][-1] = np.copy(env.goals_pos)
-            actions = find_path(env)
-
-        tests['opt_steps'].append(len(actions))
-
-        if type(agent_range) is int:
-            num_agents = agent_range
-        elif type(agent_range) is list:
-            num_agents = random.choice(agent_range)
-        else:
-            num_agents = random.randint(agent_range[0], agent_range[1])
-
-        if type(map_range) is int:
-            map_length = map_range
-        elif type(map_range) is list:
-            map_length = random.choice(map_range)
-        else:
-            map_length = random.randint(map_range[0]//5, map_range[1]//5) * 5
-
-        env.reset(num_agents=num_agents, map_length=map_length)
-
-    tests['opt_mean_steps'] = sum(tests['opt_steps']) / len(tests['opt_steps'])
-
-    with open(name, 'wb') as f:
-        pickle.dump(tests, f)
+#     with open(name, 'wb') as f:
+#         pickle.dump(tests, f)
 
 
 def test_model(test_case='test1_50.pkl'):
