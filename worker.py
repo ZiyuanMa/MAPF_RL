@@ -435,7 +435,7 @@ class Actor:
             next_obs_pos, r, done, _ = self.env.step(actions)
 
             # return data and update observation
-            local_buffer.add(q_val[0], actions[0], r[0], next_obs_pos[0], hidden[0], comm_mask)
+            local_buffer.add(q_val[0], actions[0], r[0], next_obs_pos[0], hidden, comm_mask)
 
             if done == False and self.env.steps < self.max_steps:
 
