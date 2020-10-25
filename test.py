@@ -99,7 +99,6 @@ def test_model(test_case='test32_40_0.3.pkl'):
                 env.close(True)
         
         f_rate = (test_num-fail)/test_num
-        o_rate = optimal/test_num
         mean_steps = sum(steps)/test_num
 
         print('--------------{}---------------'.format(model_name))
