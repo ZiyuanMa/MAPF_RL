@@ -1,5 +1,4 @@
 import numpy as np
-
 import matplotlib.pyplot as plt
 plt.ion()
 from matplotlib import colors
@@ -383,13 +382,22 @@ class Environment:
         obs: tensor consists of two layers, (2, 2*self.obs_radius+1, 2*self.obs_radius+1)
             layer 1: obstacle, note 0 represents obstacle because we are using 0 padding in CNN 
             layer 2: other agents
+            layer 3: other agents' goal
+            layer 4: self goal
         
-        pos: vector of length 4, current agent position and goal position
+        pos: unit vector , direction of goal location
 
         '''
         obs = np.zeros((self.num_agents, 4, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
         pos = self.goals_pos.astype(np.int16)-self.agents_pos.astype(np.int16)
-        pos = pos / np.sqrt(pos[:,0]**2+pos[0,1]**2)
+        distance = np.sqrt(pos[:,0]**2+pos[0,1]**2)
+        # pos = pos / np.sqrt(pos[:,0]**2+pos[0,1]**2)
+        # if np.isnan(pos).any():
+        #     pos = np.nan_to_num(pos)
+
+        pos = np.divide(pos, distance, out=np.zeros((self.num_agents, 2)), where= distance!=0)
+
+
 
         # 0 represents obstacle to match 0 padding in CNN 
         obstacle_map = np.pad(self.map==0, self.obs_radius, 'constant', constant_values=0)
