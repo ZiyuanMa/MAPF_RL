@@ -115,7 +115,7 @@ class LocalBuffer:
         self.map_len = map_len
         # observation length should be (max steps+1)
         self.obs_buf = np.zeros((size+1, *config.obs_shape), dtype=np.bool)
-        self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.int16)
+        self.pos_buf = np.zeros((size+1, *config.pos_shape), dtype=np.float)
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
         self.hid_buf = np.zeros((size, config.obs_latent_dim+config.pos_latent_dim), dtype=np.float32)

@@ -137,6 +137,15 @@ class Environment:
             partition_list = [ partition for partition in partition_list if len(partition) >= 2 ]
             pos_num = sum([ len(partition) for partition in partition_list ])
 
+        self.self_goal_map = np.zeros((self.num_agents, *self.map_size), dtype=np.bool)
+        self.self_goal_map[np.arange(self.num_agents), self.goals_pos[:,0], self.goals_pos[:,1]] = 1
+        self.self_goal_map = np.pad(self.self_goal_map, ((0,0), (obs_radius,obs_radius), (obs_radius,obs_radius)), 'constant', constant_values=0)
+
+        self.other_goal_map = np.zeros((self.num_agents, *self.map_size), dtype=np.bool)
+        self.other_goal_map[:, self.goals_pos[:,0], self.goals_pos[:,1]] = 1
+        self.other_goal_map[np.arange(self.num_agents), self.goals_pos[:,0], self.goals_pos[:,1]] = 0
+        self.other_goal_map = np.pad(self.other_goal_map, ((0,0), (obs_radius,obs_radius), (obs_radius,obs_radius)), 'constant', constant_values=0)
+
         self.obs_radius = obs_radius
 
         self.reward_fn = reward_fn
@@ -378,10 +387,9 @@ class Environment:
         pos: vector of length 4, current agent position and goal position
 
         '''
-        obs = np.zeros((self.num_agents, 2, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
-        pos = np.zeros((self.num_agents, 2), dtype=np.int16)
-
+        obs = np.zeros((self.num_agents, 4, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
         pos = self.goals_pos.astype(np.int16)-self.agents_pos.astype(np.int16)
+        pos = pos / np.sqrt(pos[:,0]**2+pos[0,1]**2)
 
         # 0 represents obstacle to match 0 padding in CNN 
         obstacle_map = np.pad(self.map==0, self.obs_radius, 'constant', constant_values=0)
@@ -390,8 +398,6 @@ class Environment:
         agent_map[self.agents_pos[:,0], self.agents_pos[:,1]] = 1
         agent_map = np.pad(agent_map, self.obs_radius, 'constant', constant_values=0)
 
-        # goal_map = np.zeros(self.map_size, dtype=np.float32)
-        # goal_map[self.goals_pos[:,0], self.goals_pos[:,1]] = 1
 
         for i, agent_pos in enumerate(self.agents_pos):
             x, y = agent_pos
@@ -399,8 +405,11 @@ class Environment:
             obs[i,0] = obstacle_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
             obs[i,1] = agent_map[x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
-
             obs[i,1,self.obs_radius,self.obs_radius] = 0
+
+            obs[i,2] = self.other_goal_map[i, x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
+
+            obs[i,3] = self.self_goal_map[i, x:x+2*self.obs_radius+1, y:y+2*self.obs_radius+1]
 
         return obs, pos
     

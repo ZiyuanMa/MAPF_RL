@@ -10,7 +10,7 @@ reward_fn = dict(move=-0.075,
                 collision=-0.5,
                 finish=3)
 
-obs_shape = (2,9,9)
+obs_shape = (4,9,9)
 pos_shape = (2,)
 
 
@@ -55,7 +55,7 @@ max_map_lenght = 40
 pass_rate = 0.9
 
 # dqn network setting
-cnn_channel = 96
+cnn_channel = 128
 obs_latent_dim = 245
 pos_latent_dim = 11
 latent_dim = obs_latent_dim+pos_latent_dim
