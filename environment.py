@@ -398,14 +398,10 @@ class Environment:
 
         '''
         obs = np.zeros((self.num_agents, 4, 2*self.obs_radius+1, 2*self.obs_radius+1), dtype=np.bool)
-        pos = self.goals_pos.astype(np.int16)-self.agents_pos.astype(np.int16)
-        distance = np.sqrt(pos[:,0]**2+pos[0,1]**2)
-        # pos = pos / np.sqrt(pos[:,0]**2+pos[0,1]**2)
-        # if np.isnan(pos).any():
-        #     pos = np.nan_to_num(pos)
+        pos = self.goals_pos-self.agents_pos
+        distance = np.expand_dims(np.sqrt(pos[:,0]**2+pos[:,1]**2), axis=1)
 
         pos = np.divide(pos, distance, out=np.zeros((self.num_agents, 2)), where= distance!=0)
-
 
 
         # 0 represents obstacle to match 0 padding in CNN 
