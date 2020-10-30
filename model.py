@@ -165,12 +165,8 @@ class Network(nn.Module):
         self.comm = CommBlock(self.latent_dim)
 
         # dueling q structure
-        if distributional:
-            self.adv = nn.Linear(self.latent_dim, 5*self.num_quant)
-            self.state = nn.Linear(self.latent_dim, 1*self.num_quant)
-        else:
-            self.adv = nn.Linear(self.latent_dim, 5)
-            self.state = nn.Linear(self.latent_dim, 1)
+        self.adv = nn.Linear(self.latent_dim, 5)
+        self.state = nn.Linear(self.latent_dim, 1)
 
         self.hidden = None
 
@@ -217,20 +213,11 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            # batch_size x 5 x 200
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        # print(q_val.shape)
+        actions = torch.argmax(q_val, 1).tolist()
 
-            actions = q_val.mean(2).argmax(1).tolist()
-
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            # print(q_val.shape)
-            actions = torch.argmax(q_val, 1).tolist()
-
-        return actions, q_val.numpy(), hidden.numpy(), comm_mask.numpy()
+        return actions, q_val.cpu().numpy(), hidden.cpu().numpy(), comm_mask.cpu().numpy()
 
     def reset(self):
         self.hidden = None
