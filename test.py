@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from environment import Environment
 from model import Network
-from search import find_path
 from tqdm import tqdm
 import pickle
 import os
@@ -11,15 +10,14 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import random
-import argparse
-from typing import Union
+import time
 import config
-torch.manual_seed(0)
-np.random.seed(0)
-random.seed(0)
+torch.manual_seed(1)
+np.random.seed(1)
+random.seed(1)
 test_num = 200
 device = torch.device('cuda')
-device = torch.device('cpu')
+# device = torch.device('cpu')
 
 # def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple], density=None):
 
@@ -121,6 +119,7 @@ def test_model(test_case='test16_40_0.3.pkl'):
 
         fail = 0
         steps = []
+        start = time.time()
 
         for i in range(test_num):
             env.load(tests['maps'][i], tests['agents'][i], tests['goals'][i])
@@ -158,10 +157,12 @@ def test_model(test_case='test16_40_0.3.pkl'):
         
         f_rate = (test_num-fail)/test_num
         mean_steps = sum(steps)/test_num
+        duration = time.time()-start
 
         print('--------------{}---------------'.format(model_name))
         print('finish: %.4f' %f_rate)
         print('mean steps: %.2f' %mean_steps)
+        print('time spend: %.2f' %duration)
 
 
         model_name -= config.save_interval
@@ -230,7 +231,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(16, 40, 0.3)
+    # create_test(32, 40, 0.3)
     test_model()
     # make_animation()
     # create_test(1, 20)

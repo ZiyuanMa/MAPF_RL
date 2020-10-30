@@ -138,7 +138,6 @@ class LocalBuffer:
         self.act_buf = np.zeros((size), dtype=np.uint8)
         self.rew_buf = np.zeros((size), dtype=np.float32)
         self.hid_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
-        self.cell_buf = np.zeros((size, config.latent_dim), dtype=np.float32)
 
         self.q_buf = np.zeros((size+1, 5), dtype=np.float32)
 

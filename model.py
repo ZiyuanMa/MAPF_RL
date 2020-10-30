@@ -42,15 +42,12 @@ class ResBlock(nn.Module):
         return x
 
 class Network(nn.Module):
-    def __init__(self, cnn_channel=config.cnn_channel,
-                distributional=config.distributional):
+    def __init__(self, cnn_channel=config.cnn_channel):
 
         super().__init__()
 
         self.obs_dim = config.obs_shape[0]
         self.latent_dim = config.latent_dim
-        self.distributional = distributional
-        self.num_quant = 200
         self.output_shape = (64, 5, 5)
 
         self.obs_encoder = nn.Sequential(
@@ -71,15 +68,11 @@ class Network(nn.Module):
 
         )
 
-        self.recurrent = nn.LSTM(8*7*7, self.latent_dim, batch_first=True)
+        self.recurrent = nn.GRU(8*7*7, self.latent_dim, batch_first=True)
 
         # dueling q structure
-        if distributional:
-            self.adv = nn.Linear(self.latent_dim, 5*self.num_quant)
-            self.state = nn.Linear(self.latent_dim, 1*self.num_quant)
-        else:
-            self.adv = nn.Linear(self.latent_dim, 5)
-            self.state = nn.Linear(self.latent_dim, 1)
+        self.adv = nn.Linear(self.latent_dim, 5)
+        self.state = nn.Linear(self.latent_dim, 1)
 
         self.hidden = None
 
@@ -105,21 +98,11 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            # batch_size x 5 x 200
-            q_val = (state_val + adv_val - adv_val.mean(1, keepdim=True)).mean(2)
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        # print(q_val.shape)
+        actions = torch.argmax(q_val, 1).tolist()
 
-            actions = q_val.argmax(1).tolist()
-
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-            # print(q_val.shape)
-            actions = torch.argmax(q_val, 1).tolist()
-
-
-        return actions, q_val.cpu().numpy(), (self.hidden[0][0].cpu().numpy(), self.hidden[1][0].cpu().numpy())
+        return actions, q_val.cpu().numpy(), self.hidden[0].cpu().numpy()
 
     def reset(self):
         self.hidden = None
@@ -145,12 +128,6 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
         return q_val
