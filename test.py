@@ -39,23 +39,96 @@ device = torch.device('cuda:0')
 #         pickle.dump(tests, f)
 
 
-def test_model(test_case='test32_40_0.3.pkl'):
+# def test_model(test_case='test32_40_0.3.pkl'):
+
+#     network = Network()
+#     network.eval()
+#     network.to(device)
+
+
+#     with open(test_case, 'rb') as f:
+#         tests = pickle.load(f)
+
+#     model_name = 502500
+#     while os.path.exists('./models/{}.pth'.format(model_name)):
+#         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
+#         network.load_state_dict(state_dict)
+#         env = Environment()
+
+#         case = 30
+#         show = False
+#         show_steps = 100
+
+#         fail = 0
+#         steps = []
+
+#         start = time.time()
+#         for i in range(test_num):
+#             env.load(tests['maps'][i], tests['agents'][i], tests['goals'][i])
+            
+#             done = False
+#             network.reset()
+
+#             while not done and env.steps < config.max_steps:
+#                 if i == case and show and env.steps < show_steps:
+#                     env.render()
+
+#                 obs_pos = env.observe()
+
+#                 actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
+
+#                 if i == case and show and env.steps < show_steps:
+#                     print(q_vals)
+
+#                 if i == case and show and env.steps < show_steps:
+#                     print(actions)
+
+#                 _, _, done, _ = env.step(actions)
+#                 # print(done)
+                    
+#             steps.append(env.steps)
+
+#             if not np.array_equal(env.agents_pos, env.goals_pos):
+#                 fail += 1
+#                 if show:
+#                     print(i)
+
+
+
+#             if i == case and show:
+#                 env.close(True)
+
+#         duration = time.time()-start
+#         f_rate = (test_num-fail)/test_num
+#         mean_steps = sum(steps)/test_num
+
+#         print('--------------{}---------------'.format(model_name))
+#         print('finish: %.4f' %f_rate)
+#         print('mean steps: %.2f' %mean_steps)
+#         print('time spend: %.2f' %duration)
+
+
+#         model_name -= config.save_interval
+
+def test_model(map_length, density):
 
     network = Network()
     network.eval()
     network.to(device)
 
+    state_dict = torch.load('./model.pth', map_location=device)
+    network.load_state_dict(state_dict)
 
-    with open(test_case, 'rb') as f:
-        tests = pickle.load(f)
+    num_agents = 4
 
-    model_name = 502500
-    while os.path.exists('./models/{}.pth'.format(model_name)):
-        state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
-        network.load_state_dict(state_dict)
+    while os.path.exists('./test{}_{}_{}.pkl'.format(num_agents, map_length, density)):
+
+        with open('./test{}_{}_{}.pkl'.format(num_agents, map_length, density), 'rb') as f:
+            tests = pickle.load(f)
+
         env = Environment()
 
-        case = 30
+        case = 2
         show = False
         show_steps = 100
 
@@ -78,14 +151,14 @@ def test_model(test_case='test32_40_0.3.pkl'):
                 actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
                 if i == case and show and env.steps < show_steps:
+                    print(obs_pos[0, 3:7, 4, 4])
                     print(q_vals)
-
-                if i == case and show and env.steps < show_steps:
                     print(actions)
+
 
                 _, _, done, _ = env.step(actions)
                 # print(done)
-                    
+
             steps.append(env.steps)
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
@@ -93,22 +166,19 @@ def test_model(test_case='test32_40_0.3.pkl'):
                 if show:
                     print(i)
 
-
-
             if i == case and show:
                 env.close(True)
 
-        duration = time.time()-start
         f_rate = (test_num-fail)/test_num
         mean_steps = sum(steps)/test_num
+        duration = time.time()-start
 
-        print('--------------{}---------------'.format(model_name))
-        print('finish: %.4f' %f_rate)
-        print('mean steps: %.2f' %mean_steps)
+        print('-----number of agents:{} map_length:{} density:{}-----'.format(num_agents, map_length, density))
+        print('success rate: %.4f' %f_rate)
+        print('average steps: %.2f' %mean_steps)
         print('time spend: %.2f' %duration)
 
-
-        model_name -= config.save_interval
+        num_agents *= 2
 
 def make_animation():
     color_map = np.array([[255, 255, 255],   # white
@@ -175,6 +245,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(8, 20)
-    test_model()
+    test_model(40, 0.3)
     # make_animation()
     # create_test(1, 20)
