@@ -135,12 +135,11 @@ class CommBlock(nn.Module):
 
 
 class Network(nn.Module):
-    def __init__(self, cnn_channel=config.cnn_channel, distributional=config.distributional):
+    def __init__(self, cnn_channel=config.cnn_channel):
 
         super().__init__()
 
         self.latent_dim = config.latent_dim
-        self.distributional = distributional
         self.num_quant = 200
 
         self.obs_encoder = nn.Sequential(
@@ -254,11 +253,6 @@ class Network(nn.Module):
         adv_val = self.adv(hidden)
         state_val = self.state(hidden)
 
-        if self.distributional:
-            adv_val = adv_val.view(-1, 5, self.num_quant)
-            state_val = state_val.unsqueeze(1)
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
-        else:
-            q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
+        q_val = state_val + adv_val - adv_val.mean(1, keepdim=True)
 
         return q_val
