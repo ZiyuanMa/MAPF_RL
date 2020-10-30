@@ -10,15 +10,14 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import random
-import argparse
-from typing import Union
 import config
+import time
 torch.manual_seed(1)
 np.random.seed(1)
 random.seed(1)
 test_num = 200
 device = torch.device('cpu')
-# device = torch.device('cpu')
+device = torch.device('cuda:0')
 
 # def create_test(num_agents:int, map_length:int, density=None):
 
@@ -50,7 +49,7 @@ def test_model(test_case='test32_40_0.3.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 507500
+    model_name = 502500
     while os.path.exists('./models/{}.pth'.format(model_name)):
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
@@ -63,6 +62,7 @@ def test_model(test_case='test32_40_0.3.pkl'):
         fail = 0
         steps = []
 
+        start = time.time()
         for i in range(test_num):
             env.load(tests['maps'][i], tests['agents'][i], tests['goals'][i])
             
@@ -75,7 +75,7 @@ def test_model(test_case='test32_40_0.3.pkl'):
 
                 obs_pos = env.observe()
 
-                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]), torch.FloatTensor(obs_pos[1]))
+                actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
                 if i == case and show and env.steps < show_steps:
                     print(q_vals)
@@ -97,13 +97,15 @@ def test_model(test_case='test32_40_0.3.pkl'):
 
             if i == case and show:
                 env.close(True)
-        
+
+        duration = time.time()-start
         f_rate = (test_num-fail)/test_num
         mean_steps = sum(steps)/test_num
 
         print('--------------{}---------------'.format(model_name))
         print('finish: %.4f' %f_rate)
         print('mean steps: %.2f' %mean_steps)
+        print('time spend: %.2f' %duration)
 
 
         model_name -= config.save_interval

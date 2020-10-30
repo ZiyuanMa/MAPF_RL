@@ -115,7 +115,7 @@ class Network(nn.Module):
         # print(q_val.shape)
         actions = torch.argmax(q_val, 1).tolist()
 
-        return actions, q_val.numpy(), self.hidden[0].numpy()
+        return actions, q_val.cpu().numpy(), self.hidden[0].cpu().numpy()
 
     def reset(self):
         self.hidden = None

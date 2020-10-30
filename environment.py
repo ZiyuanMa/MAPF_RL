@@ -222,7 +222,14 @@ class Environment:
         self.num_agents = agents_pos.shape[0]
         self.map_size = (self.map.shape[0], self.map.shape[1])
 
-        # self.history = [np.copy(self.agents_pos)]
+        self.self_goal_map = np.zeros((self.num_agents, *self.map_size), dtype=np.bool)
+        self.self_goal_map[np.arange(self.num_agents), self.goals_pos[:,0], self.goals_pos[:,1]] = 1
+        self.self_goal_map = np.pad(self.self_goal_map, ((0,0), (self.obs_radius,self.obs_radius), (self.obs_radius,self.obs_radius)), 'constant', constant_values=0)
+
+        self.other_goal_map = np.zeros((self.num_agents, *self.map_size), dtype=np.bool)
+        self.other_goal_map[:, self.goals_pos[:,0], self.goals_pos[:,1]] = 1
+        self.other_goal_map[np.arange(self.num_agents), self.goals_pos[:,0], self.goals_pos[:,1]] = 0
+        self.other_goal_map = np.pad(self.other_goal_map, ((0,0), (self.obs_radius,self.obs_radius), (self.obs_radius,self.obs_radius)), 'constant', constant_values=0)
         
         self.steps = 0
 
