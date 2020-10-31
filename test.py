@@ -18,7 +18,7 @@ np.random.seed(1)
 random.seed(1)
 test_num = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
+# device = torch.device('cpu')
 
 def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tuple]):
 
@@ -89,8 +89,9 @@ def test_model(test_case='test32_80_0.3.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_name = 200000
-    while os.path.exists('./models/{}.pth'.format(model_name)):
+    model_names = [237500, 275000, 297500, 302500, 305000, 332500, 337500, 340000, 377500, 380000, 385000]
+
+    for model_name in model_names:
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
         network.load_state_dict(state_dict)
         env = Environment()
@@ -139,10 +140,10 @@ def test_model(test_case='test32_80_0.3.pkl'):
         mean_steps = sum(steps)/test_num
 
         print('--------------{}---------------'.format(model_name))
-        print('finish: %.4f' %f_rate)
-        print('mean steps: %.2f' %mean_steps)
+        print('success rate: %.4f' %f_rate)
+        print('average steps: %.2f' %mean_steps)
 
-        model_name -= config.save_interval
+
 
 def make_animation():
     color_map = np.array([[255, 255, 255],   # white

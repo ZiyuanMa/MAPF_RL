@@ -141,6 +141,7 @@ class Network(nn.Module):
 
         self.latent_dim = config.latent_dim
         self.num_quant = 200
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.obs_encoder = nn.Sequential(
             nn.Conv2d(config.obs_shape[0], 128, 3, 1),
@@ -199,7 +200,7 @@ class Network(nn.Module):
         in_obs_mask = (pos_mat<=config.obs_radius).all(2)
         # mask out agents that too far away from agent
         _, ranking = dis_mat.topk(min(config.max_comm_agents, num_agents), dim=1, largest=False)
-        dis_mask = torch.zeros((num_agents, num_agents), dtype=torch.bool)
+        dis_mask = torch.zeros((num_agents, num_agents), dtype=torch.bool).to(self.device)
         dis_mask.scatter_(1, ranking, True)
         # print(in_obs_mask)
 
