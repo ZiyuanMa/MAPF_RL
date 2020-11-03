@@ -186,17 +186,17 @@ def make_animation():
                     [255, 165, 0],   # orange
                     [0, 250, 154]])  # green
 
-    test_name = 'test4.pkl'
+    test_name = 'test2_15_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
-    test_case = 1
+    test_case = 5
     
-    model_name = config.save_interval * 40
-    steps = 30
+
+    steps = 20
     network = Network()
     network.eval()
     network.to(device)
-    state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
+    state_dict = torch.load('./model.pth', map_location=device)
     network.load_state_dict(state_dict)
 
     env = Environment()
@@ -234,7 +234,7 @@ def make_animation():
         obs_pos, _, done, _ = env.step(actions)
         # print(done)
 
-    ani = animation.ArtistAnimation(fig, imgs, interval=500, blit=True,
+    ani = animation.ArtistAnimation(fig, imgs, interval=600, blit=True,
                                 repeat_delay=1000)
 
     ani.save('dynamic_images.mp4')
@@ -244,6 +244,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(8, 20)
-    test_model(20, 0.3)
-    # make_animation()
+    # test_model(15, 0.3)
+    make_animation()
     # create_test(1, 20)
