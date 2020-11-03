@@ -186,7 +186,7 @@ def test_model(map_length, density):
         env = Environment()
 
         case = 2
-        show = False
+        show = True
         show_steps = 100
 
         fail = 0
@@ -302,7 +302,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    create_test(10, 10, 0.3)
+    # create_test(10, 10, 0.3)
     test_model(10, 0.3)
     # make_animation()
     # create_test(1, 20)
