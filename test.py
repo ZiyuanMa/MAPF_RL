@@ -245,10 +245,10 @@ def make_animation():
                     [255, 165, 0],   # orange
                     [0, 250, 154]])  # green
 
-    test_name = 'test4_5_0.3.pkl'
+    test_name = 'test2_20_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
-    test_case = 3
+    test_case = 28
     
     steps = 20
     network = Network()
@@ -312,7 +312,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(2, 20, 0.3)
-    test_model(20, 0.3)
+    create_test(2, 15, 0.3)
+    # test_model(20, 0.3)
     # make_animation()
     # create_test(1, 20)
