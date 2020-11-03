@@ -176,7 +176,7 @@ def test_model(map_length, density):
     state_dict = torch.load('./model.pth', map_location=device)
     network.load_state_dict(state_dict)
 
-    num_agents = 8
+    num_agents = 4
 
     while os.path.exists('./test{}_{}_{}.pkl'.format(num_agents, map_length, density)):
 
@@ -216,7 +216,7 @@ def test_model(map_length, density):
                 _, _, done, _ = env.step(actions)
                 # print(done)
 
-            print(env.steps)
+            print('{}, '.format(env.steps), end='')
             steps.append(env.steps)
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
@@ -302,7 +302,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    create_test(8, 10, 0.3)
-    test_model(10, 0.3)
+    create_test(4, 5, 0.3)
+    test_model(5, 0.3)
     # make_animation()
     # create_test(1, 20)
