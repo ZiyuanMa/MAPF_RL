@@ -89,7 +89,7 @@ def test_model(test_case='test32_80_0.3.pkl'):
     with open(test_case, 'rb') as f:
         tests = pickle.load(f)
 
-    model_names = [237500, 275000, 297500, 302500, 305000, 332500, 337500, 340000, 377500, 380000, 385000]
+    model_names = [337500]
 
     for model_name in model_names:
         state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
