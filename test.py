@@ -245,13 +245,12 @@ def make_animation():
                     [255, 165, 0],   # orange
                     [0, 250, 154]])  # green
 
-    test_name = 'test16_20_0.3.pkl'
+    test_name = 'test4_5_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
-    test_case = 1
+    test_case = 3
     
-    model_name = config.save_interval * 40
-    steps = 30
+    steps = 20
     network = Network()
     network.eval()
     network.to(device)
@@ -293,7 +292,18 @@ def make_animation():
         obs_pos, _, done, _ = env.step(actions)
         # print(done)
 
-    ani = animation.ArtistAnimation(fig, imgs, interval=500, blit=True,
+    if done and env.steps < steps:
+        for _ in range(steps-env.steps):
+            imgs.append([])
+            imgs[-1].append(img)
+            for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
+                text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+                imgs[-1].append(text)
+                text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+                imgs[-1].append(text)
+
+
+    ani = animation.ArtistAnimation(fig, imgs, interval=600, blit=True,
                                 repeat_delay=1000)
 
     ani.save('dynamic_images.mp4')
@@ -302,7 +312,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    create_test(4, 5, 0.3)
-    test_model(5, 0.3)
-    # make_animation()
+    # create_test(4, 5, 0.3)
+    # test_model(5, 0.3)
+    make_animation()
     # create_test(1, 20)
