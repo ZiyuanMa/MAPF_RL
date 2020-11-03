@@ -189,10 +189,10 @@ def make_animation():
     test_name = 'test2_15_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
-    test_case = 5
+    test_case = 16
     
 
-    steps = 20
+    steps = 25
     network = Network()
     network.eval()
     network.to(device)
