@@ -79,7 +79,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test16_20_0.3.pkl'):
+def test_model(test_case='test10_10_0.3.pkl'):
 
     network = Network()
     network.eval()
