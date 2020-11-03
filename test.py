@@ -119,7 +119,7 @@ def test_model(map_length, density):
     state_dict = torch.load('./model.pth', map_location=device)
     network.load_state_dict(state_dict)
 
-    num_agents = 4
+    num_agents = 2
 
     while os.path.exists('./test{}_{}_{}.pkl'.format(num_agents, map_length, density)):
 
@@ -128,8 +128,8 @@ def test_model(map_length, density):
 
         env = Environment()
 
-        case = 2
-        show = False
+        case = 28
+        show = True
         show_steps = 100
 
         fail = 0
@@ -151,7 +151,6 @@ def test_model(map_length, density):
                 actions, q_vals, _ = network.step(torch.FloatTensor(obs_pos[0]).to(device), torch.FloatTensor(obs_pos[1]).to(device))
 
                 if i == case and show and env.steps < show_steps:
-                    print(obs_pos[0, 3:7, 4, 4])
                     print(q_vals)
                     print(actions)
 
@@ -163,8 +162,8 @@ def test_model(map_length, density):
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
                 fail += 1
-                if show:
-                    print(i)
+                # if show:
+                print(i)
 
             if i == case and show:
                 env.close(True)
@@ -245,6 +244,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(8, 20)
-    test_model(40, 0.3)
+    test_model(20, 0.3)
     # make_animation()
     # create_test(1, 20)
