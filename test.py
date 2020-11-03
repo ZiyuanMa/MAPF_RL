@@ -176,7 +176,7 @@ def test_model(map_length, density):
     state_dict = torch.load('./model.pth', map_location=device)
     network.load_state_dict(state_dict)
 
-    num_agents = 16
+    num_agents = 10
 
     while os.path.exists('./test{}_{}_{}.pkl'.format(num_agents, map_length, density)):
 
@@ -302,7 +302,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    # create_test(16, 20, 0.3)
-    # test_model(20, 0.3)
-    make_animation()
+    create_test(10, 10, 0.3)
+    test_model(10, 0.3)
+    # make_animation()
     # create_test(1, 20)
