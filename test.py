@@ -156,10 +156,10 @@ def make_animation():
     test_name = 'test4_5_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
-    test_case = 21
+    test_case = 3
     
     model_name = 337500
-    steps = 40
+    steps = 18
     network = Network()
     network.eval()
     network.to(device)
@@ -201,35 +201,28 @@ def make_animation():
         obs_pos, _, done, _ = env.step(actions)
         # print(done)
 
-    imgs.append([])
-    map = np.copy(env.map)
-    for agent_id in range(env.num_agents):
-        if np.array_equal(env.agents_pos[agent_id], env.goals_pos[agent_id]):
-            map[tuple(env.agents_pos[agent_id])] = 4
-        else:
-            map[tuple(env.agents_pos[agent_id])] = 2
-            map[tuple(env.goals_pos[agent_id])] = 3
-    map = map.astype(np.uint8)
 
-    img = plt.imshow(color_map[map], animated=True)
+    if done and env.steps < steps:
+        map = np.copy(env.map)
+        for agent_id in range(env.num_agents):
+            if np.array_equal(env.agents_pos[agent_id], env.goals_pos[agent_id]):
+                map[tuple(env.agents_pos[agent_id])] = 4
+            else:
+                map[tuple(env.agents_pos[agent_id])] = 2
+                map[tuple(env.goals_pos[agent_id])] = 3
+        map = map.astype(np.uint8)
+        img = plt.imshow(color_map[map], animated=True)
 
-    imgs[-1].append(img)
-    for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
-        text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
-        imgs[-1].append(text)
-        text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
-        imgs[-1].append(text)
+        for _ in range(steps-env.steps):
+            imgs.append([])
+            imgs[-1].append(img)
+            for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
+                text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+                imgs[-1].append(text)
+                text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+                imgs[-1].append(text)
 
-    imgs.append([])
-    imgs[-1].append(img)
-
-    for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
-        text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
-        imgs[-1].append(text)
-        text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
-        imgs[-1].append(text)
-
-    ani = animation.ArtistAnimation(fig, imgs, interval=800, blit=True,
+    ani = animation.ArtistAnimation(fig, imgs, interval=600, blit=True,
                                 repeat_delay=1000)
 
     ani.save('dynamic_images.mp4')
