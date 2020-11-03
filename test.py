@@ -79,7 +79,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test8_10_0.3.pkl'):
+def test_model(test_case='test4_5_0.3.pkl'):
 
     network = Network()
     network.eval()
@@ -96,7 +96,7 @@ def test_model(test_case='test8_10_0.3.pkl'):
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 0
+        case = 3
         show = True
         show_steps = 50
 
@@ -126,7 +126,7 @@ def test_model(test_case='test8_10_0.3.pkl'):
                 _, _, done, _ = env.step(actions)
                 # print(done)
 
-            print(env.steps)
+            print("{}, ".format(env.steps), end='')
             steps.append(env.steps)
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
@@ -153,13 +153,13 @@ def make_animation():
                     [255, 165, 0],   # orange
                     [0, 250, 154]])  # green
 
-    test_name = 'test4.pkl'
+    test_name = 'test4_5_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
-    test_case = 1
+    test_case = 21
     
-    model_name = config.save_interval * 40
-    steps = 30
+    model_name = 337500
+    steps = 40
     network = Network()
     network.eval()
     network.to(device)
@@ -197,11 +197,39 @@ def make_animation():
             imgs[-1].append(text)
 
 
-        actions, _ = network.step(torch.from_numpy(obs_pos[0].astype(np.float32)).to(device), torch.from_numpy(obs_pos[1].astype(np.float32)).to(device))
+        actions, _, _, _ = network.step(torch.from_numpy(obs_pos[0].astype(np.float32)).to(device), torch.from_numpy(obs_pos[1].astype(np.float32)).to(device))
         obs_pos, _, done, _ = env.step(actions)
         # print(done)
 
-    ani = animation.ArtistAnimation(fig, imgs, interval=500, blit=True,
+    imgs.append([])
+    map = np.copy(env.map)
+    for agent_id in range(env.num_agents):
+        if np.array_equal(env.agents_pos[agent_id], env.goals_pos[agent_id]):
+            map[tuple(env.agents_pos[agent_id])] = 4
+        else:
+            map[tuple(env.agents_pos[agent_id])] = 2
+            map[tuple(env.goals_pos[agent_id])] = 3
+    map = map.astype(np.uint8)
+
+    img = plt.imshow(color_map[map], animated=True)
+
+    imgs[-1].append(img)
+    for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
+        text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+        imgs[-1].append(text)
+        text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+        imgs[-1].append(text)
+
+    imgs.append([])
+    imgs[-1].append(img)
+
+    for i, ((agent_x, agent_y), (goal_x, goal_y)) in enumerate(zip(env.agents_pos, env.goals_pos)):
+        text = plt.text(agent_y, agent_x, i, color='black', ha='center', va='center')
+        imgs[-1].append(text)
+        text = plt.text(goal_y, goal_x, i, color='black', ha='center', va='center')
+        imgs[-1].append(text)
+
+    ani = animation.ArtistAnimation(fig, imgs, interval=800, blit=True,
                                 repeat_delay=1000)
 
     ani.save('dynamic_images.mp4')
@@ -211,6 +239,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(8, 20)
-    test_model()
-    # make_animation()
+    # test_model()
+    make_animation()
     
