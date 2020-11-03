@@ -245,12 +245,12 @@ def make_animation():
                     [255, 165, 0],   # orange
                     [0, 250, 154]])  # green
 
-    test_name = 'test2_20_0.3.pkl'
+    test_name = 'test2_15_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
-    test_case = 28
+    test_case = 16
     
-    steps = 20
+    steps = 25
     network = Network()
     network.eval()
     network.to(device)
@@ -293,6 +293,16 @@ def make_animation():
         # print(done)
 
     if done and env.steps < steps:
+        map = np.copy(env.map)
+        for agent_id in range(env.num_agents):
+            if np.array_equal(env.agents_pos[agent_id], env.goals_pos[agent_id]):
+                map[tuple(env.agents_pos[agent_id])] = 4
+            else:
+                map[tuple(env.agents_pos[agent_id])] = 2
+                map[tuple(env.goals_pos[agent_id])] = 3
+        map = map.astype(np.uint8)
+
+        img = plt.imshow(color_map[map], animated=True)
         for _ in range(steps-env.steps):
             imgs.append([])
             imgs[-1].append(img)
@@ -312,7 +322,7 @@ def make_animation():
 
 if __name__ == '__main__':
 
-    create_test(2, 15, 0.3)
+    # create_test(2, 15, 0.3)
     # test_model(20, 0.3)
-    # make_animation()
+    make_animation()
     # create_test(1, 20)
