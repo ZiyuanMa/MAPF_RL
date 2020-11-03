@@ -79,7 +79,7 @@ def create_test(agent_range:Union[int,list,tuple], map_range:Union[int,list,tupl
         pickle.dump(tests, f)
 
 
-def test_model(test_case='test10_10_0.3.pkl'):
+def test_model(test_case='test8_10_0.3.pkl'):
 
     network = Network()
     network.eval()
@@ -96,9 +96,9 @@ def test_model(test_case='test10_10_0.3.pkl'):
         network.load_state_dict(state_dict)
         env = Environment()
 
-        case = 4
-        show = False
-        show_steps = 30
+        case = 0
+        show = True
+        show_steps = 50
 
         fail = 0
         steps = []
@@ -126,6 +126,7 @@ def test_model(test_case='test10_10_0.3.pkl'):
                 _, _, done, _ = env.step(actions)
                 # print(done)
 
+            print(env.steps)
             steps.append(env.steps)
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
