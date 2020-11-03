@@ -216,6 +216,7 @@ def test_model(map_length, density):
                 _, _, done, _ = env.step(actions)
                 # print(done)
 
+            print(env.steps)
             steps.append(env.steps)
 
             if not np.array_equal(env.agents_pos, env.goals_pos):
@@ -244,7 +245,7 @@ def make_animation():
                     [255, 165, 0],   # orange
                     [0, 250, 154]])  # green
 
-    test_name = 'test4.pkl'
+    test_name = 'test16_20_0.3.pkl'
     with open(test_name, 'rb') as f:
         tests = pickle.load(f)
     test_case = 1
@@ -254,7 +255,7 @@ def make_animation():
     network = Network()
     network.eval()
     network.to(device)
-    state_dict = torch.load('./models/{}.pth'.format(model_name), map_location=device)
+    state_dict = torch.load('./model.pth', map_location=device)
     network.load_state_dict(state_dict)
 
     env = Environment()
@@ -288,7 +289,7 @@ def make_animation():
             imgs[-1].append(text)
 
 
-        actions, _, _ = network.step(torch.from_numpy(obs_pos[0].astype(np.float32)).to(device), torch.from_numpy(obs_pos[1].astype(np.float32)).to(device))
+        actions, _, _ = network.step(torch.from_numpy(obs_pos.astype(np.float32)).to(device))
         obs_pos, _, done, _ = env.step(actions)
         # print(done)
 
@@ -302,6 +303,6 @@ def make_animation():
 if __name__ == '__main__':
 
     # create_test(16, 20, 0.3)
-    test_model(20, 0.3)
-    # make_animation()
+    # test_model(20, 0.3)
+    make_animation()
     # create_test(1, 20)
