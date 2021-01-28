@@ -1,4 +1,3 @@
 __pycache__
-test.ipynb
+.vscode
 models/*
-test_log.txt
