@@ -204,7 +204,6 @@ class GlobalBuffer:
                     if add_map_key not in self.stat_dict:
                         self.stat_dict[add_map_key] = []
                 
-                    del self.stat_dict[key]
 
         self.level = ray.put(list(self.stat_dict.keys()))
 
