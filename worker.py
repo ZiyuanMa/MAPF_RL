@@ -134,7 +134,7 @@ class GlobalBuffer:
                 else:
                     obs = self.obs_buf[idx+global_idx+1-config.bt_steps:idx+global_idx+1+steps]
                     comm_mask = self.comm_mask[idx+global_idx+1-config.bt_steps:idx+global_idx+1+steps]
-                    hidden = self.hid_buf[idx-config.bt_steps-1]
+                    hidden = self.hid_buf[idx-config.bt_steps]
 
                 if obs.shape[0] < config.bt_steps+config.forward_steps:
                     pad_len = config.bt_steps+config.forward_steps-obs.shape[0]
